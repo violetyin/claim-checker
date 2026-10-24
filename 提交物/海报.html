@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>这句能信吗 · 海报</title>
+<style>
+  @page { size: A4; margin: 0; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    width:210mm; height:297mm; background:#fbf9f5; color:#1c1c1e; overflow:hidden;
+    font:10.2pt/1.65 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased; position:relative;
+  }
+  /* 纸纹：细密斜线，印刷出来有质感 */
+  body::before{
+    content:''; position:absolute; inset:0; pointer-events:none; opacity:.5;
+    background-image:repeating-linear-gradient(45deg,rgba(138,109,59,.035) 0 1px,transparent 1px 6px);
+  }
+  .page{position:relative; height:100%; padding:15mm 16mm 12mm; display:flex; flex-direction:column}
+
+  /* 顶部 */
+  .top{display:flex; justify-content:space-between; align-items:center;
+       font-size:8.4pt; letter-spacing:.14em; color:#8a6d3b; padding-bottom:5mm;
+       border-bottom:1.2pt solid #1c1c1e}
+  .top .r{color:#86868b; letter-spacing:.05em}
+
+  h1{font-size:40pt; letter-spacing:-.01em; line-height:1.08; margin-top:9mm; font-weight:700}
+  h1 em{font-style:normal; color:#8a6d3b}
+  .lede{font-size:11.6pt; color:#3a3a3c; margin-top:5mm; line-height:1.72; max-width:150mm}
+  .lede b{color:#1c1c1e}
+
+  /* 四步 */
+  .flow{display:grid; grid-template-columns:repeat(4,1fr); gap:3.5mm; margin-top:9mm}
+  .step{border-top:2.4pt solid #1c1c1e; padding-top:3mm}
+  .step .n{font-size:8pt; color:#8a6d3b; letter-spacing:.16em; font-weight:600}
+  .step .t{font-size:13.5pt; font-weight:700; margin:.8mm 0 1.4mm}
+  .step .d{font-size:8.5pt; color:#6b6b6b; line-height:1.55}
+
+  /* 五档 */
+  .grades{margin-top:9mm}
+  .glabel{font-size:8pt; letter-spacing:.18em; color:#86868b; margin-bottom:2.6mm}
+  .grow{display:grid; grid-template-columns:repeat(5,1fr); gap:2.4mm}
+  .g{border-radius:2mm; padding:3mm 3mm 3.4mm; color:#fff}
+  .g .gi{font-size:11pt; font-weight:700; line-height:1}
+  .g .gn{font-size:10pt; font-weight:700; margin-top:1.6mm}
+  .g .gd{font-size:7.4pt; line-height:1.45; opacity:.92; margin-top:1.2mm}
+
+  /* 三条演示 */
+  .demo{margin-top:9mm; border-top:1pt solid #ddd8cd; padding-top:4mm}
+  .dlabel{font-size:8pt; letter-spacing:.18em; color:#86868b; margin-bottom:3mm}
+  .cards{display:grid; grid-template-columns:repeat(3,1fr); gap:3mm}
+  .card{background:#fff; border:.8pt solid #e6e2da; border-radius:2mm; padding:3.4mm}
+  .card .q{font-size:9.6pt; font-weight:700}
+  .card .v{font-size:8pt; font-weight:700; margin:1.6mm 0 1.4mm}
+  .card .r{font-size:7.6pt; color:#6b6b6b; line-height:1.5}
+
+  /* 数据条 */
+  .nums{display:flex; gap:7mm; margin-top:7mm; padding:4mm 0; border-top:1pt solid #ddd8cd;
+        border-bottom:1pt solid #ddd8cd}
+  .num .v{font-size:17pt; font-weight:700; letter-spacing:-.02em}
+  .num .l{font-size:7.4pt; color:#86868b; margin-top:.6mm}
+
+  /* 底部 */
+  .foot{margin-top:auto; padding-top:5mm; display:flex; justify-content:space-between;
+        align-items:flex-end; gap:8mm}
+  .url{font-size:8.6pt; color:#1c1c1e; word-break:break-all; line-height:1.5}
+  .url b{display:block; font-size:7.4pt; letter-spacing:.16em; color:#8a6d3b; margin-bottom:1mm}
+  .meta{font-size:7pt; color:#a8a8ad; text-align:right; line-height:1.55; white-space:nowrap}
+</style></head>
+<body><div class="page">
+
+  <div class="top">
+    <span>1024 超能 CODING 周末　·　武汉会场　·　侦探赛道</span>
+    <span class="r">元宝搜索 × 42 部本草古籍</span>
+  </div>
+
+  <h1>这句<em>能信吗</em></h1>
+  <p class="lede">
+    丢一句你听来的养生说法进去，它把话拆成几个能查的命题，
+    一边查<b>古书里到底有没有这句话</b>，一边查<b>现代权威怎么说</b>，
+    回来告诉你哪句有据、哪句方向对但被夸大、哪句<b>根本查不到</b>。
+  </p>
+
+  <div class="flow">
+    <div class="step"><div class="n">01</div><div class="t">拆</div>
+      <div class="d">一句说法拆成 2~3 个能独立核验的断言，覆盖「有没有这东西」和「效果有多大」两层</div></div>
+    <div class="step"><div class="n">02</div><div class="t">查</div>
+      <div class="d">双源并行：元宝搜索查现代证据，42 部古籍全文查传统出处</div></div>
+    <div class="step"><div class="n">03</div><div class="t">比</div>
+      <div class="d">信源分四级，只采信政府、权威机构、央媒、学术；营销号与偏方站直接剔除</div></div>
+    <div class="step"><div class="n">04</div><div class="t">判</div>
+      <div class="d">给五档结论，每条都挂得住来源。查不到就说查不到，不硬编</div></div>
+  </div>
+
+  <div class="grades">
+    <div class="glabel">五档结论　——　养生传言绝大多数落在「部分有据」</div>
+    <div class="grow">
+      <div class="g" style="background:#2e6b4f">
+        <div class="gi">✓</div><div class="gn">有据</div>
+        <div class="gd">多个独立权威一致支持</div></div>
+      <div class="g" style="background:#b07c1a">
+        <div class="gi">◐</div><div class="gn">部分有据</div>
+        <div class="gd">方向对，程度被夸大</div></div>
+      <div class="g" style="background:#b3261e">
+        <div class="gi">✕</div><div class="gn">相反</div>
+        <div class="gd">权威结论与说法相反</div></div>
+      <div class="g" style="background:#8a6d3b">
+        <div class="gi">❖</div><div class="gn">仅古载</div>
+        <div class="gd">古籍有，现代支持不足</div></div>
+      <div class="g" style="background:#6b6b6b">
+        <div class="gi">∅</div><div class="gn">查不到</div>
+        <div class="gd">没有一条来源真在说这件事</div></div>
+    </div>
+  </div>
+
+  <div class="demo">
+    <div class="dlabel">三条真实查询</div>
+    <div class="cards">
+      <div class="card">
+        <div class="q">红枣补铁</div>
+        <div class="v" style="color:#b07c1a">◐ 部分有据</div>
+        <div class="r">红枣含铁是真的，能有效补铁是假的——非血红素铁，吸收率 2%~10%</div>
+      </div>
+      <div class="card">
+        <div class="q">味精加热会致癌</div>
+        <div class="v" style="color:#b3261e">✕ 相反</div>
+        <div class="r">权威来源结论与该说法相反。它不客气，也不讨好</div>
+      </div>
+      <div class="card">
+        <div class="q">红枣配薄荷能排肝毒<br><span style="font-weight:400;color:#a8a8ad;font-size:7.4pt">（我编的）</span></div>
+        <div class="v" style="color:#6b6b6b">∅ 查不到</div>
+        <div class="r">55 条结果剔除 43 条偏方站与营销号，剩下没有一条在说这件事</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nums">
+    <div class="num"><div class="v">42</div><div class="l">部本草古籍全文</div></div>
+    <div class="num"><div class="v">877<span style="font-size:9pt">万字</span></div><div class="l">逐段匹配，不靠检索索引</div></div>
+    <div class="num"><div class="v">4<span style="font-size:9pt">级</span></div><div class="l">信源分级，只采信 T1/T2</div></div>
+    <div class="num"><div class="v">5<span style="font-size:9pt">档</span></div><div class="l">结论，含「查不到」</div></div>
+  </div>
+
+  <div class="foot">
+    <div class="url">
+      <b>在线使用　可输入任意说法</b>
+      claim-checker.app.workbuddy.host
+    </div>
+    <div class="meta">
+      古籍语料：42 部公版本草全文<br>
+      现代证据：腾讯云元宝搜索<br>
+      只做资料核对，不替代医生
+    </div>
+  </div>
+
+</div></body></html>

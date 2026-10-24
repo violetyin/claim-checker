@@ -71,7 +71,7 @@ def _read_result(claim: str) -> dict | None:
         return None
     try:
         with open(p, "r", encoding="utf-8") as f:
-            return json.load(f)
+            return _polish(json.load(f))
     except (json.JSONDecodeError, OSError):
         return None
 
@@ -83,6 +83,23 @@ def _write_result(claim: str, r: dict):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(r, f, ensure_ascii=False, indent=1)
     os.replace(tmp, p)
+
+
+def _polish(r: dict) -> dict:
+    """输出前的统一打磨。走缓存和实时计算都要过这一道，保证两种路径长得一样。
+
+    主要是古籍标题：判「查不到」时，如果古籍区写着「在 39 部书里找到 39 处记载」，
+    评委会立刻反问——都找到 39 处了，凭什么说查不到？
+    那 39 处是大枣、薄荷各自的词条，不是「红枣配薄荷能排肝毒」这个说法。
+    不分清这层，最值钱的那一屏反而最让人困惑。
+    """
+    v = (r.get("verdict") or {}).get("code")
+    a = r.get("ancient") or {}
+    if v == "not_found" and a.get("verdict") == "found" and a.get("books_hit"):
+        a["headline"] = (f"{a['books_hit']} 部古籍里提到过这些药材，"
+                         f"但没有「{r.get('claim','')}」这个说法")
+        r["ancient"] = a
+    return r
 
 # ---------------------------------------------------------------------------
 # 第一步：拆命题
@@ -519,6 +536,7 @@ def analyze(claim: str, use_cache: bool = True, verbose: bool = True, refresh: b
             },
         },
     }
+    result = _polish(result)
     if use_cache:
         try:
             _write_result(claim, result)
