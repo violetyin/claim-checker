@@ -27,6 +27,7 @@ import json
 import os
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -47,7 +48,9 @@ VERDICTS = {
     "not_found":    {"label": "查不到",   "icon": "∅", "color": "#6b6b6b"},
 }
 
-MAX_SOURCES_TO_LLM = 10     # 给模型的来源条数上限，控 prompt 长度
+MAX_SOURCES_TO_LLM = 8      # 给模型的来源条数上限。
+                            # 从 10 降到 8：生成时间基本跟输出量走，输入太长会拖慢首字；
+                            # 8 条 T1/T2 已经足够判断"有没有人真在说这件事"。
 MAX_SEARCH_PER_PROP = 3     # 每命题最多几条检索式（额度预算）
 MAX_PROPOSITIONS = 3
 
@@ -159,11 +162,35 @@ def _norm_url(u: str) -> str:
     return u.split("#")[0].rstrip("/")
 
 
-def gather_modern(prop: dict, use_cache: bool = True) -> dict:
-    """一个命题 → 跑它的检索式 → 合并去重 → 分级 → 只留能进证据链的。"""
-    queries = [q for q in (prop.get("queries") or []) if isinstance(q, str) and q.strip()]
-    queries = queries[:MAX_SEARCH_PER_PROP] or [prop["text"]]
+def _plan_queries(prop: dict) -> list[str]:
+    qs = [q for q in (prop.get("queries") or []) if isinstance(q, str) and q.strip()]
+    return qs[:MAX_SEARCH_PER_PROP] or [prop["text"]]
 
+
+def fetch_queries(queries: list[str], use_cache: bool = True, jobs: int = 6) -> dict[str, dict]:
+    """把一批检索式并发打出去。
+
+    这是整条链路最慢的一步：串行时 6~9 次搜索要干等 15~30 秒，
+    每条都在等网络。并发后额度消耗完全一样，等待时间压到「最慢那一条」。
+    不同命题的检索式也一起打——它们之间没有依赖，没理由排队。
+    """
+    out: dict[str, dict] = {}
+    uniq = list(dict.fromkeys(q for q in queries if q))
+    if not uniq:
+        return out
+    with ThreadPoolExecutor(max_workers=min(jobs, len(uniq))) as ex:
+        futs = {ex.submit(w.search, q, cnt=10, use_cache=use_cache): q for q in uniq}
+        for f in as_completed(futs):
+            q = futs[f]
+            try:
+                out[q] = f.result()
+            except w.WsaError as e:
+                out[q] = {"_error": str(e)[:80]}
+    return out
+
+
+def assemble_modern(prop: dict, fetched: dict[str, dict]) -> dict:
+    """合并一个命题的多条检索结果 → 去重 → 分级 → 只留能进证据链的。"""
     seen: dict[str, dict] = {}
     seen_title: dict[str, dict] = {}   # 同一篇文章常有简繁两版、PC 与移动两版，
                                        # 域名不同但内容是同一篇。光按 url 去重会把它算成两个独立来源，
@@ -173,20 +200,21 @@ def gather_modern(prop: dict, use_cache: bool = True) -> dict:
     errors = []
     used_queries = []
 
-    def _merge(bucket: dict, k: str, p: dict) -> bool:
-        prev = bucket.get(k)
+    def _merge(k: str, p: dict) -> bool:
+        prev = seen.get(k)
         if prev is None:
-            bucket[k] = p
+            seen[k] = p
             return True
         if float(p.get("score") or 0) > float(prev.get("score") or 0):
-            bucket[k].update(p)
+            seen[k].update(p)
         return False
 
-    for q in queries:
-        try:
-            r = w.search(q, cnt=10, use_cache=use_cache)
-        except w.WsaError as e:
-            errors.append(f"{q}: {str(e)[:60]}")
+    for q in _plan_queries(prop):
+        r = fetched.get(q)
+        if r is None:
+            continue
+        if "_error" in r:
+            errors.append(f"{q}: {r['_error']}")
             continue
         used_queries.append(q)
         if not r.get("cached"):
@@ -201,7 +229,7 @@ def gather_modern(prop: dict, use_cache: bool = True) -> dict:
             tkey = f"{title}|{date}" if len(title) >= 10 else ""
             if tkey and tkey in seen_title:
                 continue
-            if not _merge(seen, key, p):
+            if not _merge(key, p):
                 continue
             if tkey:
                 seen_title[tkey] = seen[key]
@@ -219,6 +247,22 @@ def gather_modern(prop: dict, use_cache: bool = True) -> dict:
         "errors": errors,
         "cross": st.cross_check(list(seen.values())),
     }
+
+
+def gather_modern_batch(props: list[dict], use_cache: bool = True, progress=None) -> list[dict]:
+    """所有命题的检索式一次性并发打完，再逐个命题归位。"""
+    all_q: list[str] = []
+    for p in props:
+        all_q.extend(_plan_queries(p))
+    if progress:
+        progress(f"并发发起 {len(set(all_q))} 条检索式…")
+    fetched = fetch_queries(all_q, use_cache=use_cache)
+    return [assemble_modern(p, fetched) for p in props]
+
+
+def gather_modern(prop: dict, use_cache: bool = True) -> dict:
+    """单个命题的便捷入口（保留给外部调用）。"""
+    return gather_modern_batch([prop], use_cache=use_cache)[0]
 
 
 def gather_ancient(claim: str, props: list[dict]) -> dict:
@@ -313,7 +357,7 @@ def _build_judge_input(claim: str, props: list[dict], moderns: list[dict], ancie
             lines.append(
                 f"[{idx}] {s.get('title','')} | {s.get('site','')} | "
                 f"{(s.get('date') or '')[:10]} | 信源档位 T{s.get('tier')}{s.get('tier_label')}\n"
-                f"    {excerpt[:300]}"
+                f"    {excerpt[:220]}"
             )
             item = dict(s)
             item["id"] = idx
@@ -344,7 +388,7 @@ def judge(claim: str, props: list[dict], moderns: list[dict], ancient: dict) -> 
                 [{"role": "system", "content": JUDGE_SYS},
                  {"role": "user", "content": user_text}],
                 model=cfg.get("model") or None,
-                max_tokens=1200,
+                max_tokens=900,
             )
             calls += 1
             v = (d.get("verdict") or "").strip()
@@ -386,19 +430,22 @@ def analyze(claim: str, use_cache: bool = True, verbose: bool = True, refresh: b
             return hit
 
     say(f"　拆 → 把「{claim}」拆成可查的命题…")
+    t_split = time.time()
     split, split_fallback = split_propositions(claim)
     props = split["propositions"]
+    t_split = time.time() - t_split
 
-    say(f"　查 → {len(props)} 个命题，走元宝搜索 + 42 部古籍…")
-    moderns = []
-    api_calls = 0
-    for i, p in enumerate(props, 1):
-        mod = gather_modern(p, use_cache=use_cache)
-        api_calls += mod["api_calls"]
-        moderns.append(mod)
+    say(f"　查 → {len(props)} 个命题，并发走元宝搜索 + 42 部古籍…")
+    t_search = time.time()
+    moderns = gather_modern_batch(props, use_cache=use_cache)
+    t_search = time.time() - t_search
+    api_calls = sum(m["api_calls"] for m in moderns)
+    for i, mod in enumerate(moderns, 1):
         say(f"　　 命题{i}：{mod['unique']} 条去重 / 可信 {mod['trusted_total']} / 剔除 {len(mod['discarded'])}")
 
+    t_ancient = time.time()
     ancient = gather_ancient(claim, props)
+    t_ancient = time.time() - t_ancient
     if ancient["verdict"] == "not_found":
         say("　  古籍：未找到相关记载")
     else:
@@ -406,7 +453,9 @@ def analyze(claim: str, use_cache: bool = True, verbose: bool = True, refresh: b
 
     say("　比 → 数独立来源，不看条数")
     say("　判 → 给结论…")
+    t_judge = time.time()
     verdict, llm_calls = judge(claim, props, moderns, ancient)
+    t_judge = time.time() - t_judge
     llm_calls += 0 if split_fallback else 1
 
     # 把命题判定对齐回来源编号，方便前端渲染"这句话有哪几条依据"
@@ -461,6 +510,13 @@ def analyze(claim: str, use_cache: bool = True, verbose: bool = True, refresh: b
             "split_fallback": split_fallback,
             "elapsed": round(time.time() - t0, 1),
             "from_cache": False,
+            # 分阶段耗时：调优和路演被问「为什么快/慢」时有据可答
+            "stages": {
+                "拆命题": round(t_split, 1),
+                "并发搜索": round(t_search, 1),
+                "古籍检索": round(t_ancient, 1),
+                "判定": round(t_judge, 1),
+            },
         },
     }
     if use_cache:
@@ -513,6 +569,9 @@ def print_report(r: dict):
     s = r["stats"]
     mode = "回放（之前核过）" if s.get("from_cache") else "实时"
     print(f"本次：{mode} · 搜索 {s['searches']} 次 · 模型 {s['llm_calls']} 次 · 耗时 {s['elapsed']}s")
+    st = s.get("stages") or {}
+    if st:
+        print("分阶段：" + " · ".join(f"{k} {v}s" for k, v in st.items()))
     print(f"剔除低质来源 {r['discarded_count']} 条（营销号/偏方站，不进证据链）")
     print(bar)
 

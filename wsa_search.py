@@ -29,6 +29,7 @@ import hashlib
 import json
 import os
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -118,21 +119,26 @@ def _cache_write(path: str, data: dict):
 # 额度计数：别在调试里把 6000 次烧光
 # ---------------------------------------------------------------------------
 
+# 额度计数会被并发写（多条检索式同时跑），read-modify-write 不加锁会丢数甚至写坏文件
+_USAGE_LOCK = threading.Lock()
+
+
 def _usage_bump(n: int = 1) -> int:
-    today = datetime.now().strftime("%Y-%m-%d")
-    data = {"days": {}}
-    if os.path.isfile(USAGE_FILE):
-        try:
-            with open(USAGE_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            pass
-    days = data.setdefault("days", {})
-    days[today] = days.get(today, 0) + n
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    with open(USAGE_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=1)
-    return days[today]
+    with _USAGE_LOCK:
+        today = datetime.now().strftime("%Y-%m-%d")
+        data = {"days": {}}
+        if os.path.isfile(USAGE_FILE):
+            try:
+                with open(USAGE_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                pass
+        days = data.setdefault("days", {})
+        days[today] = days.get(today, 0) + n
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        with open(USAGE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=1)
+        return days[today]
 
 
 def usage_today() -> int:

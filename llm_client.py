@@ -60,7 +60,15 @@ def load_config() -> dict:
             "或设环境变量 OPENAI_BASE_URL / OPENAI_API_KEY / OPENAI_MODEL。\n"
             "不确定 base_url 时先问赛事群或看「我的福利」页面——别猜。"
         )
-    return {"base_url": base, "api_key": key, "model": model}
+    out = {"base_url": base, "api_key": key, "model": model}
+    # 这些可选字段必须原样带出去。
+    # 曾经漏带 fast_model，导致拆命题一直退回慢模型——
+    # 配置写对了但没读到，比没写更坑。
+    for k in ("fast_model", "judge_model"):
+        v = (cfg.get(k) or os.environ.get("OPENAI_" + k.upper()) or "").strip()
+        if v:
+            out[k] = v
+    return out
 
 
 def _request(url: str, key: str, payload: dict | None = None, method: str = "POST") -> dict:
@@ -167,6 +175,33 @@ def chat_json(messages: list[dict], **kw) -> dict:
             except json.JSONDecodeError:
                 pass
     raise LLMError(f"模型没返回合法 JSON：{raw[:300]}")
+
+
+def warmup(models: list[str] | None = None) -> dict:
+    """先发一句废话把模型唤醒。
+
+    实测（2026-10-24 比赛网关，只用 10 个 token 回两个字）：
+        gpt-6-luna   第 1 次 13.9s → 第 2 次 2.4s
+        gpt-6.1-sol  第 1 次 14.0s → 第 2 次 6.9s
+    上游有明显冷启动，还叠加了比赛期间全国选手同时在用。
+    服务启动时先热一遍，第一个真实提问就不用承担这一刀。
+
+    返回 {模型: 耗时秒 或 错误}。
+    """
+    out = {}
+    try:
+        cfg = load_config()
+    except SystemExit as e:
+        return {"_": str(e)[:80]}
+    targets = models or [m for m in (cfg.get("model"), cfg.get("fast_model")) if m]
+    for m in dict.fromkeys(targets):
+        t0 = time.time()
+        try:
+            chat([{"role": "user", "content": "回一个字：好"}], model=m, max_tokens=8, temperature=0)
+            out[m] = round(time.time() - t0, 1)
+        except LLMError as e:
+            out[m] = f"失败：{str(e)[:60]}"
+    return out
 
 
 # ---------------------------------------------------------------------------

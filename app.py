@@ -18,6 +18,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -25,6 +26,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 import checker
 import guji_engine
+import llm_client as L
 import source_tier as st
 import wsa_search as w
 
@@ -283,6 +285,15 @@ def main():
     s = guji_engine.corpus_stats()
     print(f"✓ {s['books']} 部古籍 / {s['sentences']} 段 / {s['chars']//10000} 万字")
     print(f"✓ 元宝搜索：今日已调用 {w.usage_today()} 次")
+
+    # 网关有冷启动（实测首次 13.9s、第二次 2.4s），开服先热一遍，
+    # 这样第一个真实提问就不用替我们承担这一刀。放后台，不挡服务启动。
+    def _warm():
+        r = L.warmup()
+        print("✓ 模型预热：" + " · ".join(f"{k} {v}s" for k, v in r.items()), flush=True)
+
+    threading.Thread(target=_warm, daemon=True).start()
+
     print(f"\n打开 →  http://127.0.0.1:{args.port}\n")
     ThreadingHTTPServer(("127.0.0.1", args.port), Handler).serve_forever()
 
