@@ -25,7 +25,8 @@ sys.stdout.reconfigure(encoding="utf-8")
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "deploy")
 
-CODE = ["app.py", "checker.py", "guji_engine.py", "wsa_search.py", "source_tier.py", "llm_client.py"]
+CODE = ["app.py", "checker.py", "guji_engine.py", "wsa_search.py", "source_tier.py",
+        "llm_client.py", "monitor.py", "report.py"]
 SECRETS = ["_wsa_key.txt", "_llm.json"]
 
 BOOKS_SRC = os.path.join(HERE, "_ref", "参考项目-药食同源配方推荐系统", "data", "ancient_books")

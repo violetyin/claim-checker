@@ -59,14 +59,14 @@ MAX_PROPOSITIONS = 3
 RESULT_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache", "check")
 
 
-def _result_cache_path(claim: str) -> str:
+def _result_cache_path(claim: str, deep: bool = False) -> str:
     import hashlib
-    key = "".join(claim.split())      # 去掉空白差异
+    key = ("deep:" if deep else "") + "".join(claim.split())   # 去掉空白差异
     return os.path.join(RESULT_CACHE_DIR, hashlib.sha1(key.encode("utf-8")).hexdigest()[:20] + ".json")
 
 
-def _read_result(claim: str) -> dict | None:
-    p = _result_cache_path(claim)
+def _read_result(claim: str, deep: bool = False) -> dict | None:
+    p = _result_cache_path(claim, deep)
     if not os.path.isfile(p):
         return None
     try:
@@ -76,9 +76,9 @@ def _read_result(claim: str) -> dict | None:
         return None
 
 
-def _write_result(claim: str, r: dict):
+def _write_result(claim: str, r: dict, deep: bool = False):
     os.makedirs(RESULT_CACHE_DIR, exist_ok=True)
-    p = _result_cache_path(claim)
+    p = _result_cache_path(claim, deep)
     tmp = p + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(r, f, ensure_ascii=False, indent=1)
@@ -147,7 +147,7 @@ def _fallback_split(claim: str) -> dict:
     }
 
 
-def split_propositions(claim: str) -> tuple[dict, bool]:
+def split_propositions(claim: str, max_props: int | None = None) -> tuple[dict, bool]:
     cfg = L.load_config()
     try:
         d = L.chat_json(
@@ -159,7 +159,7 @@ def split_propositions(claim: str) -> tuple[dict, bool]:
         props = d.get("propositions") or []
         props = [p for p in props if isinstance(p, dict) and p.get("text")]
         if props:
-            return {"propositions": props[:MAX_PROPOSITIONS]}, False
+            return {"propositions": props[:max_props or MAX_PROPOSITIONS]}, False
     except L.LLMError as e:
         print(f"  ⚠ 拆命题失败（{str(e)[:80]}），退回整句检索", file=sys.stderr)
     return _fallback_split(claim), True
@@ -181,7 +181,8 @@ def _norm_url(u: str) -> str:
 
 def _plan_queries(prop: dict) -> list[str]:
     qs = [q for q in (prop.get("queries") or []) if isinstance(q, str) and q.strip()]
-    return qs[:MAX_SEARCH_PER_PROP] or [prop["text"]]
+    lim = prop.get("qlimit") or MAX_SEARCH_PER_PROP
+    return qs[:lim] or [prop["text"]]
 
 
 def fetch_queries(queries: list[str], use_cache: bool = True, jobs: int = 6) -> dict[str, dict]:
@@ -395,6 +396,71 @@ def _build_judge_input(claim: str, props: list[dict], moderns: list[dict], ancie
     return "\n".join(lines), numbered
 
 
+FOLLOWUP_SYS = """你在做深度核查的第二轮追问。
+
+第一轮已经查过一轮，下面告诉你每个命题的初步结论。你的任务是：只针对**还有争议**的命题
+（初步判为「部分有据」「相反」「查不到」的），再生成 1~2 条更锋利的追问式。
+
+追问要针对分歧点，不要重复第一轮的问法：
+- 如果是「部分有据」：追它的**程度**和**适用条件**（谁的结论、多大剂量、什么人群、多大效果）
+- 如果是「相反」：追**有没有例外**（是不是某些条件下成立、原始研究怎么说的）
+- 如果是「查不到」：追它**是不是换了说法**（同义表述、相关概念、是否出自某个具体机构）
+- 已经判「有据」的命题，返回空数组，不要浪费额度
+
+检索式 6~20 字，像人真的会打进搜索框的话。不要引号、不要 AND/OR。
+
+只输出 JSON：
+{"followups":[{"index":0,"queries":["...","..."]}]}   （index 是命题序号，从 0 开始）"""
+
+
+def generate_followups(claim: str, props: list[dict], moderns: list[dict], verdict: dict) -> list[list[str]]:
+    """深度调查第二轮：针对有争议的命题补刀。
+
+    为什么要这一轮：第一轮拿到的来源往往停在「有没有」这一层，
+    而养生传言的分歧几乎都在「到什么程度」。不追问，就只能给个模糊结论。
+    """
+    lines = [f"待核查的说法：{claim}", ""]
+    dispute = []
+    for i, (p, m) in enumerate(zip(props, moderns)):
+        pv = ""
+        for item in (verdict.get("propositions") or []):
+            if isinstance(item, dict) and item.get("text", "").strip() == p.get("text", "").strip():
+                pv = item.get("verdict", "")
+                break
+        lines.append(f"[{i}] 命题：{p.get('text')}　初步结论：{pv or '未知'}")
+        if pv in ("partial", "contrary", "not_found"):
+            dispute.append(i)
+            lines.append(f"    已有来源 {len(m.get('sources') or [])} 条，"
+                         f"其中最相关的标题：{(m.get('sources') or [{}])[0].get('title','')[:40] if m.get('sources') else '（无）'}")
+
+    out: list[list[str]] = [[] for _ in props]
+    if not dispute:
+        return out
+
+    cfg = L.load_config()
+    try:
+        d = L.chat_json(
+            [{"role": "system", "content": FOLLOWUP_SYS},
+             {"role": "user", "content": "\n".join(lines)}],
+            model=cfg.get("fast_model") or None,
+            max_tokens=700,
+        )
+    except L.LLMError:
+        return out
+
+    for item in (d.get("followups") or []):
+        if not isinstance(item, dict):
+            continue
+        try:
+            idx = int(item.get("index"))
+        except (TypeError, ValueError):
+            continue
+        if 0 <= idx < len(out):
+            qs = [q for q in (item.get("queries") or []) if isinstance(q, str) and q.strip()]
+            out[idx] = qs[:2]
+    return out
+
+
 def judge(claim: str, props: list[dict], moderns: list[dict], ancient: dict) -> tuple[dict, int]:
     cfg = L.load_config()
     user_text, numbered = _build_judge_input(claim, props, moderns, ancient)
@@ -429,7 +495,8 @@ def judge(claim: str, props: list[dict], moderns: list[dict], ancient: dict) -> 
 # 主流程
 # ---------------------------------------------------------------------------
 
-def analyze(claim: str, use_cache: bool = True, verbose: bool = True, refresh: bool = False) -> dict:
+def analyze(claim: str, use_cache: bool = True, verbose: bool = True, refresh: bool = False,
+            deep: bool = False) -> dict:
     t0 = time.time()
     claim = (claim or "").strip()
     if not claim:
@@ -440,7 +507,7 @@ def analyze(claim: str, use_cache: bool = True, verbose: bool = True, refresh: b
             print(msg, flush=True)
 
     if use_cache and not refresh:
-        hit = _read_result(claim)
+        hit = _read_result(claim, deep)
         if hit:
             hit.setdefault("stats", {})["from_cache"] = True
             say(f"　回放 → 这句之前核过，直接给结论（{hit['verdict']['label']}）")
@@ -448,7 +515,8 @@ def analyze(claim: str, use_cache: bool = True, verbose: bool = True, refresh: b
 
     say(f"　拆 → 把「{claim}」拆成可查的命题…")
     t_split = time.time()
-    split, split_fallback = split_propositions(claim)
+    # 深度调查拆得更细：最多 4 条命题，每条能带更多检索式
+    split, split_fallback = split_propositions(claim, max_props=4 if deep else None)
     props = split["propositions"]
     t_split = time.time() - t_split
 
@@ -474,6 +542,30 @@ def analyze(claim: str, use_cache: bool = True, verbose: bool = True, refresh: b
     verdict, llm_calls = judge(claim, props, moderns, ancient)
     t_judge = time.time() - t_judge
     llm_calls += 0 if split_fallback else 1
+
+    # ── 深度调查第二轮：只补有争议的命题 ──
+    # 第一轮的来源多半停在「有没有」这一层，而养生传言的分歧几乎都在「到什么程度」。
+    # 不追问，就只能给个模糊结论。
+    t_deep = 0.0
+    deep_rounds = 0
+    if deep:
+        say("　深 → 第二轮追问，补有争议的地方…")
+        t_deep = time.time()
+        fu = generate_followups(claim, props, moderns, verdict)
+        if any(fu):
+            for p, ex in zip(props, fu):
+                if ex:
+                    p["queries"] = list(p.get("queries") or []) + ex
+                    p["qlimit"] = 6          # 追加后不能被原来的 3 条上限截掉
+            llm_calls += 1                 # 追问生成这一次
+            moderns = gather_modern_batch(props, use_cache=use_cache)
+            api_calls = sum(m["api_calls"] for m in moderns)
+            verdict, c2 = judge(claim, props, moderns, ancient)
+            llm_calls += c2
+            deep_rounds = 1
+            for i, mod in enumerate(moderns, 1):
+                say(f"　　 第二轮命题{i}：{mod['unique']} 条去重 / 可信 {mod['trusted_total']}")
+        t_deep = time.time() - t_deep
 
     # 把命题判定对齐回来源编号，方便前端渲染"这句话有哪几条依据"
     prop_out = []
@@ -528,18 +620,21 @@ def analyze(claim: str, use_cache: bool = True, verbose: bool = True, refresh: b
             "elapsed": round(time.time() - t0, 1),
             "from_cache": False,
             # 分阶段耗时：调优和路演被问「为什么快/慢」时有据可答
+            "deep": deep,
+            "deep_rounds": deep_rounds,
             "stages": {
                 "拆命题": round(t_split, 1),
                 "并发搜索": round(t_search, 1),
                 "古籍检索": round(t_ancient, 1),
                 "判定": round(t_judge, 1),
+                **({"第二轮追问": round(t_deep, 1)} if deep else {}),
             },
         },
     }
     result = _polish(result)
     if use_cache:
         try:
-            _write_result(claim, result)
+            _write_result(claim, result, deep)
         except OSError:
             pass
     return result
@@ -600,6 +695,7 @@ def main():
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--no-cache", action="store_true")
     ap.add_argument("--refresh", action="store_true", help="忽略已存结论，重新核一遍")
+    ap.add_argument("--deep", action="store_true", help="深度调查：多拆命题 + 第二轮追问")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
 
@@ -608,7 +704,8 @@ def main():
         print("\n试试：python checker.py \"红枣补铁\"")
         return
 
-    r = analyze(args.claim, use_cache=not args.no_cache, verbose=not args.quiet, refresh=args.refresh)
+    r = analyze(args.claim, use_cache=not args.no_cache, verbose=not args.quiet,
+                refresh=args.refresh, deep=args.deep)
     if args.json:
         print(json.dumps(r, ensure_ascii=False, indent=2))
     else:

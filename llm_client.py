@@ -177,14 +177,58 @@ def chat_json(messages: list[dict], **kw) -> dict:
     raise LLMError(f"模型没返回合法 JSON：{raw[:300]}")
 
 
+READ_IMAGE_SYS = """你在看一张聊天截图或朋友圈截图。图里有人在转发、发布一句关于养生、健康、食品的说法。
+
+请把「被转发的那个说法本身」提取出来。要求：
+- 只取说法本身。去掉「转发：」「专家说了」「赶紧转给家里人看看」「不转不是中国人」这类包装和动员语
+- 图里如果有多条消息，取那条最像「传言 / 建议 / 警告」的，不要取别人的疑问
+- 保留原话的关键限定词（例如「隔夜菜」「亚硝酸盐」「致癌」），不要改写成更温和或更笼统的说法
+- 如果图里根本没有可核验的说法（只是闲聊、问候、表情包），claim 返回空字符串
+- 不要替图里的人补充图里没写的细节
+
+只输出 JSON，不要解释：
+{"claim":"提取出的说法原文","scene":"这条消息来自什么场景，10字以内","confidence":0.0到1.0}"""
+
+
+def read_claim_from_image(image_data_url: str, model: str | None = None) -> dict:
+    """从一张截图里认出「那句话」，只做这一步，不做判定。
+
+    单独拆出来是因为：识别错了，后面查得再准也没意义。
+    识别和核查分开，出问题能一眼看出是哪一环错了。
+
+    支持 data:image/...;base64,... 形式（前端粘贴或选文件都转成这个）。
+    """
+    if not image_data_url.startswith("data:image/"):
+        raise LLMError("需要 data:image/... 形式的图片数据")
+
+    cfg = load_config()
+    messages = [{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": READ_IMAGE_SYS},
+            {"type": "image_url", "image_url": {"url": image_data_url}},
+        ],
+    }]
+    d = chat_json(messages, model=model or cfg.get("model"), max_tokens=400)
+    claim = (d.get("claim") or "").strip()
+    try:
+        conf = float(d.get("confidence") or 0)
+    except (TypeError, ValueError):
+        conf = 0.0
+    return {
+        "claim": claim,
+        "scene": (d.get("scene") or "").strip()[:20],
+        "confidence": round(max(0.0, min(1.0, conf)), 2),
+    }
+
+
 def warmup(models: list[str] | None = None) -> dict:
     """先发一句废话把模型唤醒。
 
-    实测（2026-10-24 比赛网关，只用 10 个 token 回两个字）：
+    实测（2026-10-24 比赛网关）：
         gpt-6-luna   第 1 次 13.9s → 第 2 次 2.4s
         gpt-6.1-sol  第 1 次 14.0s → 第 2 次 6.9s
-    上游有明显冷启动，还叠加了比赛期间全国选手同时在用。
-    服务启动时先热一遍，第一个真实提问就不用承担这一刀。
+    上游有冷启动。服务启动时先热一遍，第一个真实提问就不用承担这一刀。
 
     返回 {模型: 耗时秒 或 错误}。
     """

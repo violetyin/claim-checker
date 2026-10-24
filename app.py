@@ -27,6 +27,8 @@ sys.stdout.reconfigure(encoding="utf-8")
 import checker
 import guji_engine
 import llm_client as L
+import monitor
+import report
 import source_tier as st
 import wsa_search as w
 
@@ -44,20 +46,21 @@ _INFLIGHT: dict[str, bool] = {}
 _INFLIGHT_LOCK = threading.Lock()
 
 
-def _start_job(claim: str, refresh: bool):
+def _start_job(claim: str, refresh: bool, deep: bool = False):
+    key = ("deep:" if deep else "") + claim
     with _INFLIGHT_LOCK:
-        if _INFLIGHT.get(claim):
+        if _INFLIGHT.get(key):
             return                          # 同一个说法已经在跑，别重复烧额度
-        _INFLIGHT[claim] = True
+        _INFLIGHT[key] = True
 
     def _run():
         try:
-            checker.analyze(claim, refresh=refresh, verbose=False)
+            checker.analyze(claim, refresh=refresh, deep=deep, verbose=False)
         except BaseException:
             pass                            # 失败也把在跑标记清掉，让用户能重试
         finally:
             with _INFLIGHT_LOCK:
-                _INFLIGHT.pop(claim, None)
+                _INFLIGHT.pop(key, None)
 
     threading.Thread(target=_run, daemon=True).start()
 
@@ -92,6 +95,14 @@ PAGE = r"""<!doctype html>
   .chips b{font-weight:400;cursor:pointer;border-bottom:1px dashed #d8d2c6;margin-right:14px;
            padding-bottom:1px;color:var(--ink2)}
   .chips b:hover{color:var(--gold);border-color:var(--gold)}
+  .shot{margin-top:11px;font-size:13px;color:var(--sub)}
+  .shot #pick{cursor:pointer;color:var(--ink2);border-bottom:1px dashed #d8d2c6;padding-bottom:1px}
+  .shot #pick:hover{color:var(--gold);border-color:var(--gold)}
+  .shot .or{margin-left:10px;color:var(--faint);font-size:12.5px}
+  .shotres{background:#fdfcf8;border:1px solid #e9e3d6;border-radius:12px;padding:12px 16px;
+           font-size:14px;color:var(--ink2);margin-bottom:16px;line-height:1.7}
+  .shotres b{color:var(--ink);font-weight:600}
+  .shotres span{color:var(--sub);font-size:12.5px}
   .stage{margin-top:30px}
   .load{color:var(--sub);font-size:14px;padding:18px 0}
   .load .step{animation:pulse 1.4s infinite}
@@ -138,6 +149,22 @@ PAGE = r"""<!doctype html>
 
   .cut{margin-top:12px;font-size:12.5px;color:var(--sub);background:#f6f5f2;border-radius:9px;
        padding:9px 12px;line-height:1.6}
+  .opts{margin-top:12px;font-size:13px;color:var(--sub)}
+  .opts label{cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:7px}
+  .opts input{accent-color:#8a6d3b;width:14px;height:14px}
+  .opts .tip{color:var(--faint);margin-left:8px;font-size:12px}
+  .watch{margin-top:13px;font-size:12.5px;color:var(--sub);line-height:1.95}
+  .watch b{color:var(--ink2);font-weight:600}
+  .watch .w{cursor:pointer;border-bottom:1px dashed #d8d2c6;margin-right:12px;color:var(--ink2)}
+  .watch .w:hover{color:var(--gold);border-color:var(--gold)}
+  .act{margin:15px 0 2px}
+  .ghost{background:transparent;border:1px solid var(--line);color:var(--ink2);
+         border-radius:9px;padding:7px 14px;font-size:13px;cursor:pointer;font-family:inherit;transition:.15s}
+  .ghost:hover{border-color:#c9bda8;color:var(--gold)}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#1c1c1e;color:#fff;
+         font-size:13px;padding:9px 17px;border-radius:10px;opacity:0;transition:opacity .25s;
+         pointer-events:none;z-index:50}
+  .toast.on{opacity:.94}
   footer{margin-top:46px;padding-top:18px;border-top:1px solid var(--line);
          font-size:12px;color:var(--sub);line-height:1.85}
   footer b{font-weight:600;color:var(--ink2)}
@@ -155,6 +182,17 @@ PAGE = r"""<!doctype html>
   <p class="chips">试试：
     <b>红枣补铁</b><b>隔夜菜致癌</b><b>红枣配薄荷能排肝毒</b><b>绿豆解百毒</b>
   </p>
+  <p class="shot">
+    <span id="pick">📷 传一张家族群截图</span>
+    <span class="or">或者直接把截图粘贴进来（Ctrl+V）</span>
+    <input type="file" id="file" accept="image/*" hidden>
+  </p>
+  <div class="opts">
+    <label><input type="checkbox" id="deep"> 深度调查</label>
+    <span class="tip">多拆命题 + 第二轮追问，查得更细，也更慢</span>
+  </div>
+  <div class="watch" id="watchlist"></div>
+  <div class="toast" id="toast"></div>
 
   <div class="stage" id="out"></div>
 
@@ -169,18 +207,74 @@ const q=document.getElementById('q'), go=document.getElementById('go'), out=docu
 const C={supported:'#2e6b4f',partial:'#b07c1a',contrary:'#b3261e',ancient_only:'#8a6d3b',not_found:'#8e8e93'};
 const ICON={supported:'✓',partial:'◐',contrary:'✕',ancient_only:'❖',not_found:'∅'};
 
-document.querySelectorAll('.chips b').forEach(b=>b.onclick=()=>{q.value=b.textContent;run(false)});
+document.querySelectorAll('.chips b').forEach(b=>b.onclick=()=>{banner='';q.value=b.textContent;run(false)});
+q.addEventListener('input',()=>{banner=''});
 q.addEventListener('keydown',e=>{if(e.key==='Enter')run(false)});
 go.onclick=()=>run(false);
 
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// 从截图认出来的说法，单独存一份，渲染时置顶，不要被后面的结果冲掉
+let banner='';
+
+/* ── 截图查证：选图 / 粘贴 → 认出那句话 → 走同一条核查流程 ── */
+const fileEl=document.getElementById('file'), pickEl=document.getElementById('pick');
+pickEl.onclick=()=>fileEl.click();
+fileEl.onchange=e=>{const f=e.target.files&&e.target.files[0]; if(f) handleImage(f); fileEl.value='';};
+document.addEventListener('paste', e=>{
+  const items=(e.clipboardData&&e.clipboardData.items)||[];
+  for(const it of items){
+    if(it.type && it.type.startsWith('image/')){ handleImage(it.getAsFile()); e.preventDefault(); return; }
+  }
+});
+
+async function handleImage(file){
+  if(!file) return;
+  go.disabled=true; banner='';
+  out.innerHTML='<p class="load"><span class="step">正在从截图里认出那句话…</span></p>';
+  try{
+    const dataUrl=await new Promise((res,rej)=>{
+      const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file);
+    });
+    const small=await shrink(dataUrl,1400);   // 大图先压，别把上限顶爆
+    const r=await fetch('/api/extract',{method:'POST',headers:{'Content-Type':'application/json'},
+                                       body:JSON.stringify({image:small})}).then(x=>x.json());
+    if(r.error){ go.disabled=false; out.innerHTML='<p class="load">识别失败：'+esc(r.error)+'</p>'; return; }
+    if(!r.claim){ go.disabled=false; out.innerHTML='<p class="load">这张图里没找到可以核验的说法。</p>'; return; }
+    q.value=r.claim;
+    banner='<div class="shotres">从截图里认出的说法：<b>'+esc(r.claim)+'</b>'+
+           (r.scene?'<span>　场景：'+esc(r.scene)+'</span>':'')+
+           '<span>　识别置信度 '+Math.round((r.confidence||0)*100)+'%</span></div>';
+    go.disabled=false;
+    run(false);
+  }catch(e){
+    go.disabled=false;
+    out.innerHTML='<p class="load">识别失败：'+esc(e.message)+'</p>';
+  }
+}
+
+function shrink(dataUrl,maxW){
+  return new Promise(res=>{
+    const img=new Image();
+    img.onload=()=>{
+      const s=Math.min(1, maxW/img.width);
+      if(s>=1) return res(dataUrl);
+      const c=document.createElement('canvas');
+      c.width=Math.round(img.width*s); c.height=Math.round(img.height*s);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      res(c.toDataURL('image/jpeg',0.88));
+    };
+    img.onerror=()=>res(dataUrl);
+    img.src=dataUrl;
+  });
+}
 
 async function run(refresh){
   const v=q.value.trim(); if(!v) return;
   go.disabled=true;
   const t0=Date.now();
   const tip='拆命题 → 查古籍 → 查现代来源 → 交叉比对 → 判定';
-  const show=()=>{ out.innerHTML='<p class="load"><span class="step">'+tip+'</span><br>'+
+  const show=()=>{ out.innerHTML=banner+'<p class="load"><span class="step">'+tip+'</span><br>'+
       '<span style="font-size:12.5px;color:#a8a8ad">已等待 '+Math.round((Date.now()-t0)/1000)+' 秒'+
       '（新说法要调两次模型，比赛期间网关排队会久一些）</span></p>'; };
   show();
@@ -188,18 +282,21 @@ async function run(refresh){
 
   const stop=()=>{ clearInterval(tick); go.disabled=false; };
 
+  const deep=document.getElementById('deep').checked;
+  const extraQ=(refresh?'&refresh=1':'')+(deep?'&deep=1':'');
+
   try{
     // 异步：立刻返回，后台跑。云端反代约 100 秒就掐断，同步请求必然超时。
-    const st=await fetch('/api/start?q='+encodeURIComponent(v)+(refresh?'&refresh=1':'')).then(x=>x.json());
+    const st=await fetch('/api/start?q='+encodeURIComponent(v)+extraQ).then(x=>x.json());
     if(st.error){ stop(); out.innerHTML='<p class="load">'+esc(st.error)+'</p>'; return; }
 
     for(let i=0;i<150;i++){
       await new Promise(r=>setTimeout(r,2000));
-      const r=await fetch('/api/poll?q='+encodeURIComponent(v)).then(x=>x.json());
+      const r=await fetch('/api/poll?q='+encodeURIComponent(v)+(deep?'&deep=1':'')).then(x=>x.json());
       if(r.error){ stop(); out.innerHTML='<p class="load">'+esc(r.error)+'</p>'; return; }
       if(r.state==='running') continue;
       if(r.state==='unknown'){ stop(); out.innerHTML='<p class="load">后台任务中断了，请再点一次核查</p>'; return; }
-      stop(); out.innerHTML=render(r); return;
+      stop(); out.innerHTML=banner+render(r); bindWatch(r.claim); return;
     }
     stop();
     out.innerHTML='<p class="load">超过 5 分钟还没出结果，上游网关太慢。过一会儿再点一次，已经跑完的部分会走缓存。</p>';
@@ -282,11 +379,60 @@ function render(r){
   }
   h+='</div>';
 
+  // 动作：盯住这条 + 导出报告
+  h+=`<div class="act">
+        <button class="ghost" id="watchbtn">👁 盯住这条，每天自动重核</button>
+        <a class="ghost" style="margin-left:8px;text-decoration:none" target="_blank"
+           href="/api/report?q=${encodeURIComponent(r.claim)}${r.stats.deep?'&deep=1':''}">导出调查报告</a>
+      </div>`;
+
   // 底注
   h+=`<footer>古籍检索范围：${a.corpus.books} 部本草与食疗古籍，共 ${a.corpus.chars.toLocaleString()} 字，逐段全文匹配；现代来源经元宝搜索检索，
       仅采信 T1 政府/权威机构/央媒/学术 与 T2 主流媒体/机构科普 两级。本次搜索 ${r.stats.searches} 次、模型调用 ${r.stats.llm_calls} 次、耗时 ${r.stats.elapsed}s。</footer>`;
   return h;
 }
+
+/* ── 盯梢 ── */
+function toast(msg){
+  const t=document.getElementById('toast');
+  if(!t) return;
+  t.textContent=msg; t.classList.add('on');
+  clearTimeout(window._tt); window._tt=setTimeout(()=>t.classList.remove('on'),2200);
+}
+
+function bindWatch(claim){
+  const b=document.getElementById('watchbtn');
+  if(b) b.onclick=()=>watchAdd(claim);
+}
+
+async function watchAdd(claim){
+  try{
+    const r=await fetch('/api/watch',{method:'POST',headers:{'Content-Type':'application/json'},
+               body:JSON.stringify({action:'add',claim})}).then(x=>x.json());
+    toast(r.message||'已处理');
+    renderWatch(r.items||[]);
+  }catch(e){ toast('操作失败：'+e.message); }
+}
+
+function renderWatch(items){
+  const el=document.getElementById('watchlist');
+  if(!el) return;
+  if(!items.length){ el.innerHTML=''; return; }
+  el.innerHTML='<b>正在盯 '+items.length+' 条</b>（每天自动重核，变了会提醒）：'+
+    items.map(it=>'<span class="w" data-c="'+esc(it.claim)+'">'+esc(it.claim)+
+      (it.label?' <span style="color:#a8a8ad">'+esc(it.label)+'</span>':'')+'</span>').join('');
+  el.querySelectorAll('.w').forEach(w=>{
+    w.onclick=()=>{ document.getElementById('deep').checked=false; q.value=w.dataset.c; banner=''; run(false); };
+  });
+}
+
+async function initWatch(){
+  try{
+    const r=await fetch('/api/watch').then(x=>x.json());
+    renderWatch(r.items||[]);
+  }catch(e){}
+}
+initWatch();
 </script></body></html>"""
 
 
@@ -295,37 +441,43 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         qs = parse_qs(u.query)
 
+        if u.path == "/api/watch":
+            self._json(self._watch_payload())
+            return
+
         # 异步核查第一步：立刻返回，后台开工。命缓存则直接说 ready。
         if u.path == "/api/start":
             q = (qs.get("q") or [""])[0].strip()
             refresh = (qs.get("refresh") or [""])[0] in ("1", "true", "yes")
+            deep = (qs.get("deep") or [""])[0] in ("1", "true", "yes")
             if not q:
                 self._json({"error": "说法不能为空"})
                 return
             if w.usage_today() >= DAILY_BUDGET:
                 self._json({"error": f"今日演示额度已用完（已调用 {w.usage_today()} 次搜索），明天自动恢复。"})
                 return
-            cached = checker._read_result(q) if not refresh else None
+            cached = checker._read_result(q, deep) if not refresh else None
             if cached:
                 self._json({"state": "ready", "from_cache": True})
                 return
-            _start_job(q, refresh)
+            _start_job(q, refresh, deep)
             self._json({"state": "running", "from_cache": False})
             return
 
         # 异步核查第二步：轮询。结果一落盘就能读到，不必等请求活着。
         if u.path == "/api/poll":
             q = (qs.get("q") or [""])[0].strip()
+            deep = (qs.get("deep") or [""])[0] in ("1", "true", "yes")
             if not q:
                 self._json({"error": "说法不能为空"})
                 return
-            cached = checker._read_result(q)
+            cached = checker._read_result(q, deep)
             if cached:
                 cached.setdefault("stats", {})["from_cache"] = True
                 self._json(cached)
                 return
             with _INFLIGHT_LOCK:
-                running = bool(_INFLIGHT.get(q))
+                running = bool(_INFLIGHT.get(("deep:" if deep else "") + q))
             self._json({"state": "running" if running else "unknown"})
             return
 
@@ -356,6 +508,27 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.dumps({"error": f"{type(e).__name__}: {e}"}, ensure_ascii=False).encode("utf-8")
             self._send(body, "application/json; charset=utf-8")
             return
+        if u.path == "/api/report":
+            q = (qs.get("q") or [""])[0].strip()
+            deep = (qs.get("deep") or [""])[0] in ("1", "true", "yes")
+            if not q:
+                self._send("缺少说法".encode("utf-8"), "text/plain; charset=utf-8")
+                return
+            try:
+                r = checker.analyze(q, deep=deep, verbose=False)
+                body = report.render(r).encode("utf-8")
+                import urllib.parse as _up
+                fn = _up.quote(f"核查报告_{q}{'_深度' if deep else ''}.html")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Disposition", f"inline; filename*=UTF-8''{fn}")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception as e:
+                self._json({"error": f"{type(e).__name__}: {e}"})
+            return
+
         if u.path == "/api/stats":
             body = json.dumps({
                 "corpus": guji_engine.corpus_stats(),
@@ -367,6 +540,53 @@ class Handler(BaseHTTPRequestHandler):
             self._send(body, "application/json; charset=utf-8")
             return
         self._send(PAGE.encode("utf-8"), "text/html; charset=utf-8")
+
+    def do_POST(self):
+        u = urlparse(self.path)
+
+        if u.path == "/api/watch":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                data = json.loads(self.rfile.read(n).decode("utf-8") or "{}")
+                act = data.get("action")
+                claim = (data.get("claim") or "").strip()
+                if act == "add":
+                    ok, msg = monitor.add(claim)
+                elif act == "remove":
+                    ok, msg = monitor.remove(claim)
+                else:
+                    ok, msg = False, "未知操作"
+                self._json({"ok": ok, "message": msg, **self._watch_payload()})
+            except Exception as e:
+                self._json({"ok": False, "message": f"{type(e).__name__}: {e}"})
+            return
+
+        if u.path != "/api/extract":
+            self._json({"error": "不支持的接口"})
+            return
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            if n <= 0 or n > 12 * 1024 * 1024:
+                self._json({"error": "图片为空或超过 12MB"})
+                return
+            data = json.loads(self.rfile.read(n).decode("utf-8"))
+            img = data.get("image") or ""
+            r = L.read_claim_from_image(img)
+            self._json(r)
+        except SystemExit as e:
+            self._json({"error": f"模型配置缺失：{e}"})
+        except Exception as e:
+            self._json({"error": f"{type(e).__name__}: {e}"})
+
+    def _watch_payload(self) -> dict:
+        d = monitor.load()
+        return {"items": [{
+            "claim": it["claim"],
+            "added_at": it.get("added_at"),
+            "last_checked": it.get("last_checked"),
+            "label": (it.get("last") or {}).get("label"),
+            "headline": (it.get("last") or {}).get("headline"),
+        } for it in d.get("items", [])]}
 
     def _json(self, obj):
         self._send(json.dumps(obj, ensure_ascii=False).encode("utf-8"),
