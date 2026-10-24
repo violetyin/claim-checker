@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>这句能信吗 · 双源核查</title>
+<style>
+  :root{
+    --ink:#1c1c1e; --ink2:#3a3a3c; --sub:#86868b; --faint:#a8a8ad;
+    --line:#e8e6e1; --bg:#fbfaf8; --card:#fff; --gold:#8a6d3b;
+    --ok:#2e6b4f; --warn:#b07c1a; --bad:#b3261e; --gray:#8e8e93;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);
+    font:16px/1.72 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;padding:40px 20px 80px}
+  .wrap{max-width:820px;margin:0 auto}
+
+  header{margin-bottom:22px}
+  h1{font-size:26px;font-weight:660;letter-spacing:.3px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .tag{font-size:12px;color:var(--gold);border:1px solid #e3d9c8;background:#fdfbf6;
+       border-radius:100px;padding:2px 10px;font-weight:500}
+  .sub{color:var(--sub);font-size:14px;margin-top:8px;line-height:1.7}
+
+  .bar{background:#fdfbf6;border:1px solid #ece5d6;border-radius:11px;
+       padding:10px 14px;font-size:12.5px;color:var(--gold);margin:18px 0 20px;line-height:1.65}
+  .bar b{font-weight:650}
+
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px}
+  .tab{padding:9px 15px;border:1px solid var(--line);background:#fff;border-radius:100px;
+       font-size:14px;cursor:pointer;color:var(--ink2);transition:all .15s;font-family:inherit}
+  .tab:hover{border-color:#cfc7b8}
+  .tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .tab .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--bad);
+            margin-left:6px;vertical-align:2px}
+
+  .verdict{background:var(--card);border:1px solid var(--line);border-radius:16px;
+           padding:20px 22px;margin-bottom:20px}
+  .vhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .vchip{font-size:13px;font-weight:600;padding:3px 11px;border-radius:100px;color:#fff}
+  .vtitle{font-size:19px;font-weight:650;line-height:1.45}
+  .vreason{margin-top:12px;color:var(--ink2);font-size:15px;line-height:1.78}
+  .vmeta{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);
+         font-size:12.5px;color:var(--sub);display:flex;gap:15px;flex-wrap:wrap}
+  .vmeta .k{color:var(--faint)}
+
+  .sect{font-size:13px;letter-spacing:1.5px;color:var(--sub);margin:30px 0 12px;font-weight:500}
+
+  .prop{background:var(--card);border:1px solid var(--line);border-left-width:3px;
+        border-radius:13px;padding:15px 18px;margin-bottom:11px}
+  .ptop{display:flex;align-items:flex-start;gap:9px}
+  .pdot{width:7px;height:7px;border-radius:50%;margin-top:9px;flex:none}
+  .ptext{font-size:15.5px;font-weight:550;flex:1;line-height:1.6}
+  .pverdict{font-size:11.5px;padding:2px 8px;border-radius:6px;white-space:nowrap;margin-top:3px}
+  .preason{font-size:14px;color:var(--ink2);margin:9px 0 0 16px;line-height:1.7}
+  .srcs{margin:11px 0 0 16px;font-size:13px}
+  .src{display:block;padding:7px 0;border-top:1px dashed #efede8;color:var(--ink2);
+       text-decoration:none;line-height:1.55}
+  .src:first-child{border-top:0}
+  .src:hover .stitle{color:var(--gold);text-decoration:underline}
+  .snum{color:var(--faint);margin-right:6px;font-variant-numeric:tabular-nums}
+  .stitle{font-weight:450}
+  .smeta{color:var(--sub);font-size:12px;margin-left:16px}
+  .tier{display:inline-block;font-size:10.5px;border-radius:4px;padding:0 5px;margin-left:6px;
+        background:#f0eee9;color:var(--gold);vertical-align:1px}
+
+  .ancient{background:#fdfcf8;border:1px solid #e9e3d6;border-radius:16px;padding:20px 22px}
+  .ahead{font-size:14px;color:var(--gold);font-weight:500}
+  .anote{font-size:14px;color:var(--ink2);margin-top:9px;line-height:1.7}
+  .apass{margin-top:14px;padding-top:13px;border-top:1px solid #ece6d9}
+  .abook{font-size:12.5px;color:var(--gold);letter-spacing:.4px}
+  .atext{font-family:Georgia,"Songti SC","STSong","SimSun",serif;font-size:15.5px;
+         color:#2c2a26;margin-top:5px;line-height:1.9}
+  .quoting{font-size:14px;color:var(--sub);margin-top:10px;line-height:1.75}
+
+  .cut{margin-top:12px;font-size:12.5px;color:var(--sub);background:#f6f5f2;
+       border-radius:9px;padding:9px 12px;line-height:1.6}
+
+  footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
+         font-size:12px;color:var(--sub);line-height:1.9}
+  footer b{font-weight:600;color:var(--ink2)}
+</style></head>
+<body><div class="wrap">
+  <header>
+    <h1>这句能信吗 <span class="tag">双源核查</span></h1>
+    <p class="sub">一句话进来，拆成命题，分别去查：古书里有没有这句话，现代权威怎么说。<br>查得到就给来源，查不到就直说查不到。</p>
+  </header>
+
+  <div class="bar">
+    <b>这是静态演示版。</b>四条结论已固化——不需要后端、不需要联网、断网也能看。
+    完整版能现场核任意说法（输入框 → 拆命题 → 双源搜 → 出结论）。
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+  <div id="out"></div>
+
+  <footer>
+    <b>边界说明</b>　本工具只做资料核对，不提供诊疗建议、不替代医生，不做疾病诊断、不给用药或停药建议。
+    古籍文献记载 ≠ 现代临床疗效证据，两者在本页分开标注、不互相替代。<br>
+    证据只采信政府、卫健委、疾控、央媒、学术机构与主流媒体来源；营销号、偏方站、无署名转载一律剔除，不计入结论。<br>
+    语料：42 部本草古籍全文，共 8,774,342 字，逐段匹配。现代证据来自腾讯云元宝搜索。
+  </footer>
+</div>
+<script>
+const DATA = [{"claim":"红枣补铁","verdict":{"code":"partial","label":"部分有据","icon":"◐","color":"#b07c1a","headline":"红枣含铁，但补铁效果有限","reason":"来源[1][3][4]均直接指出红枣含有铁元素，但含量较低。来源[1][11][16]指出其铁多为非血红素铁、吸收利用率低，难达到有效补铁的预期，因此“补铁”说法夸大了效果。"},"ancient_note":"《神农本草经》和《证类本草》记载大枣可“补少气”“补中益气”等，但没有记载其含铁或能有效补充人体所需的铁。","propositions":[{"text":"红枣含有铁元素","verdict":"supported","label":"有据","reason":"来源[1][3][4]的检测或说明均直接确认红枣含有铁元素。","queries":["红枣含铁元素","红枣补铁误区辟谣","中国营养学会红枣含铁"],"sources":[{"gid":1,"title":"紅棗是“補血聖品”?專家:含量和吸收不及紅肉","url":"https://m.chinanews.com/wap/detail/cht/zw/7805577.shtml","site":"中国新闻网","date":"2016/03/21","tier":1,"tier_label":"权威"},{"gid":2,"title":"【健康科普】红枣补血是误区,补血按这三步做","url":"http://www.dongchangfu.gov.cn/site_dcfqszzzxwsy/channel_x_44978_18503/doc_6a5991ca86d1aa3a3cc81945.html","site":"东昌府区人民政府","date":"2026/07/17","tier":1,"tier_label":"权威"},{"gid":3,"title":"[宁波日报]实验揭示猪血和黑木耳 铁元素远高于红枣","url":"https://scjgj.ningbo.gov.cn/art/2021/3/31/art_1229134854_58934778.html","site":"宁波市人民政府门户网站","date":"2021/03/31","tier":1,"tier_label":"权威"},{"gid":4,"title":"吃红枣能补血补铁?朋友圈“伪科学”大起底","url":"https://www.peopleapp.com/rmharticle/30016792466","site":"人民日报","date":"2020/04/01","tier":1,"tier_label":"权威"},{"gid":5,"title":"红枣到底能不能补血?","url":"https://piyao.kepuchina.cn/rumor/rumordetail?id=MrEr","site":"科普中国网","date":"2019/10/30","tier":1,"tier_label":"权威"},{"gid":6,"title":"选对补铁食物吃出红润好气色","url":"http://paper.cfsn.cn/content/2025-01/29/content_171177.htm","site":"中国食品安全网","date":"2025/01/29","tier":1,"tier_label":"权威"},{"gid":7,"title":"贫血吃红枣真能补血吗?宁波市质检院通过科学实验揭开谜团","url":"https://www.peopleapp.com/rmharticle/30020690266","site":"人民日报","date":"2021/03/30","tier":1,"tier_label":"权威"},{"gid":8,"title":"第471期:秋天到了,“枣”已离不开你,这样吃枣营养加倍!","url":"https://health.people.com.cn/n1/2017/0915/c14739-29537832.html","site":"人民网","date":"2017/09/15","tier":1,"tier_label":"权威"},{"gid":9,"title":"秋天到了 这样吃枣营养加倍!","url":"https://www.cnr.cn/2014jkpd/jkgdxw/20170929/t20170929_523971001.shtml","site":"央广网","date":"2017/09/29","tier":1,"tier_label":"权威"},{"gid":10,"title":"科学补铁,吃对很重要","url":"https://www.cnr.cn/mspd/spcy/20260709/t20260709_527698911.shtml","site":"央广网","date":"2026/07/09","tier":1,"tier_label":"权威"}],"discarded":11,"domains":13,"t1":12},{"text":"吃红枣能有效补充人体所需的铁","verdict":"contrary","label":"相反","reason":"来源[1][11][16]指出红枣含铁量不高且吸收利用率低，难以达到有效补铁的效果。","queries":["吃红枣能有效补铁","红枣补铁是误区吗","中国营养学会红枣补铁"],"sources":[{"gid":11,"title":"吃红枣能补血补铁?朋友圈“伪科学”大起底","url":"https://www.peopleapp.com/rmharticle/30016792466","site":"人民日报","date":"2020/04/01","tier":1,"tier_label":"权威"},{"gid":12,"title":"紅棗是“補血聖品”?專家:含量和吸收不及紅肉","url":"https://m.chinanews.com/wap/detail/cht/zw/7805577.shtml","site":"中国新闻网","date":"2016/03/21","tier":1,"tier_label":"权威"},{"gid":13,"title":"【健康科普】红枣补血是误区,补血按这三步做","url":"http://www.dongchangfu.gov.cn/site_dcfqszzzxwsy/channel_x_44978_18503/doc_6a5991ca86d1aa3a3cc81945.html","site":"东昌府区人民政府","date":"2026/07/17","tier":1,"tier_label":"权威"},{"gid":14,"title":"贫血“贫”的是啥?吃红枣能补上来吗?","url":"https://www.kepuchina.cn/article/articleinfo?business_type=100&classify=0&ar_id=520387","site":"科普中国网","date":"2024/08/25","tier":1,"tier_label":"权威"},{"gid":15,"title":"吃红枣真能补血吗","url":"https://www.peopleapp.com/rmharticle/30023102759","site":"人民日报","date":"2021/07/06","tier":1,"tier_label":"权威"},{"gid":16,"title":"[科普中国]-红枣怎么吃才能有效补血?","url":"https://www.kepuchina.cn/article/articleinfo?business_type=100&ar_id=171217","site":"科普中国网","date":"2021/12/31","tier":1,"tier_label":"权威"},{"gid":17,"title":"红枣是“补血圣品”?专家:含量和吸收不及红肉","url":"https://www.chinanews.com/sh/2016/03-21/7805577.shtml","site":"中国新闻网","date":"2016/03/21","tier":1,"tier_label":"权威"},{"gid":18,"title":"红枣到底能不能补血?","url":"https://piyao.kepuchina.cn/rumor/rumordetail?id=MrEr","site":"科普中国网","date":"2019/10/30","tier":1,"tier_label":"权威"},{"gid":19,"title":"为什么会贫血?吃红枣补血吗?真相都在这里!","url":"https://www.peopleapp.com/rmharticle/30019785627","site":"人民日报","date":"2020/10/21","tier":1,"tier_label":"权威"},{"gid":20,"title":"红枣加菠菜并不能让你“一身铁血” 补铁应该这样做","url":"https://health.people.com.cn/n1/2022/0217/c14739-32353966.html","site":"人民网","date":"2022/02/17","tier":1,"tier_label":"权威"}],"discarded":9,"domains":12,"t1":13}],"ancient":{"verdict":"found","books_hit":37,"headline":"在 37 部古籍中找到 37 处记载，最早见于《神农本草经》（汉·佚名）","passages":[{"book":"本草纲目","dynasty":"明","author":"李时珍","sentence":"…大枣【释名】干枣（《别录》）、美枣（《别录》）、良枣。"},{"book":"神农本草经","dynasty":"汉","author":"佚名","sentence":"大枣味甘平。主治心腹邪气，安中养脾，助十二经，平胃气，通九窍，补少气少津液，身中不足，大惊，四肢重。和百药。久服轻身长年。叶覆麻黄，能令出汗。生平泽。"},{"book":"证类本草","dynasty":"宋","author":"唐慎微","sentence":"大枣味甘，平，无毒。主心腹邪气，安中养脾，助十二经，平胃气，通九窍，补少气，少津液，身中不足，大惊，四肢重，和百药，补中益气，强力，除烦闷，疗心下悬，肠 。久服轻身长年，不饥神仙。一名干枣，一名美枣，一名良枣。八月采，曝干。"}],"books":42,"chars":8774342},"discarded_count":20,"stats":{"searches":3,"llm_calls":2}},{"claim":"隔夜菜致癌","verdict":{"code":"partial","label":"部分有据","icon":"◐","color":"#b07c1a","headline":"隔夜菜可能增加亚硝酸盐，但不能直接说会致癌","reason":"来源[1][2][9][13]支持隔夜菜在存放过程中可能产生或增加亚硝酸盐，但增幅与食材、温度和储存条件有关。关于致癌，来源[2][20]提到长期食用特定条件下的隔夜菜可能增加风险，而来源[9][18]明确指出并非吃了就会致癌或该说法缺乏科学根据，因此“会导致癌症”表述过于绝对。"},"ancient_note":"42部本草古籍全文检索未找到相关记载。","propositions":[{"text":"隔夜菜中会产生亚硝酸盐","verdict":"supported","label":"有据","reason":"来源[1][2][9][13]均直接提到隔夜菜存放后会产生或增加亚硝酸盐。","queries":["隔夜菜会产生亚硝酸盐","隔夜菜亚硝酸盐是误区","中国营养学会隔夜菜亚硝酸盐"],"sources":[{"gid":1,"title":"少吃隔夜菜腌制菜,谨防亚硝酸盐中毒","url":"https://ysxw.cctv.cn/article.html?item_id=3760282743263308818","site":"央视网","date":"2023/12/14","tier":1,"tier_label":"权威"},{"gid":2,"title":"隔夜菜真致癌吗?带饭上班要注意啥","url":"https://news.cctv.com/2020/12/13/ARTIPVQDP3RbqDG1aZYcMSDE201213.shtml","site":"央视网","date":"2020/12/13","tier":1,"tier_label":"权威"},{"gid":3,"title":"吃剩饭剩菜会致癌?是时候告诉你真相了……","url":"http://szs.hengshui.gov.cn/art/2023/2/3/art_754_463477.html","site":"衡水市人民政府","date":"2023/02/03","tier":1,"tier_label":"权威"},{"gid":4,"title":"专家称隔夜菜没那么“毒” 亚硝酸盐含量变化不大","url":"https://china.cnr.cn/ygxw/201303/t20130328_512246325.shtml","site":"央广网","date":"2013/03/28","tier":1,"tier_label":"权威"},{"gid":5,"title":"女子长期吃隔夜菜重度贫血晕倒?吃隔夜菜危害真的这么大?一文说清…","url":"https://www.peopleapp.com/rmharticle/30024650463","site":"人民日报","date":"2021/10/10","tier":1,"tier_label":"权威"},{"gid":6,"title":"“医”说就懂丨“隔夜菜”真的会致癌吗?","url":"https://www.kepuchina.cn/article/articleinfo?ar_id=677173&business_type=100&classify=0","site":"科普中国网","date":"2026/02/28","tier":1,"tier_label":"权威"},{"gid":7,"title":"过年剩的隔夜菜到底还能不能吃?真的致癌吗?赶紧告诉爸妈","url":"https://www.cnr.cn/food/jdt/20220206/t20220206_525734195.shtml","site":"央广网","date":"2022/02/06","tier":1,"tier_label":"权威"},{"gid":8,"title":"隔夜菜真致癌嗎?帶飯上班要注意啥","url":"https://big5.cctv.com/gate/big5/news.cctv.com/2020/12/13/ARTIPVQDP3RbqDG1aZYcMSDE201213.shtml","site":"央视国际","date":"2020/12/13","tier":1,"tier_label":"权威"},{"gid":9,"title":"剩菜含有较高的亚硝酸盐,吃了容易致癌?","url":"https://piyao.kepuchina.cn/h5/rumordetail?id=zWQY","site":"科普中国网","date":"2023/01/29","tier":1,"tier_label":"权威"},{"gid":10,"title":"亞硝酸鹽正常添加無害 超量可致死","url":"https://big5.cntv.cn/gate/big5/jiankang.cctv.com/2019/04/04/ARTI8b54Ma07j4oBWR1QvI9R190404.shtml","site":"央视网","date":"2019/04/04","tier":1,"tier_label":"权威"}],"discarded":5,"domains":19,"t1":18},{"text":"吃隔夜菜会导致癌症","verdict":"partial","label":"部分有据","reason":"部分来源提到长期食用或储存不当可能增加风险，但来源[9][18]指出不能据此断言吃隔夜菜就会致癌。","queries":["吃隔夜菜会导致癌症","隔夜菜致癌辟谣","卫健委隔夜菜致癌"],"sources":[{"gid":11,"title":"真相来了丨“某些蔬菜致癌”系谣言 隔夜菜､腌制菜才真的要少吃","url":"https://ysxw.cctv.cn/article.html?item_id=10840632076394586301&t=1774617855814","site":"央视网","date":"2026/03/27","tier":1,"tier_label":"权威"},{"gid":12,"title":"吃剩饭剩菜会致癌?是时候告诉你真相了……","url":"https://www.piyao.org.cn/20230128/ec5e9f59cb7242059b0e8cc846cceff6/c.html","site":"中国互联网联合辟谣平台","date":"2023/01/28","tier":1,"tier_label":"权威"},{"gid":13,"title":"隔夜菜健不健康?看看营养师怎么说","url":"https://www.piyao.org.cn/2021-06/29/c_1211221331.htm","site":"中国互联网联合辟谣平台","date":"2021/06/29","tier":1,"tier_label":"权威"},{"gid":14,"title":"过年吃剩菜,致癌风险真有那么大?科学储存指南来袭","url":"https://app.xinhuanet.com/news/article.html?articleId=026fe8f2-d1f4-4657-8eb8-3d7b2e593718","site":"新华网","date":"2025/01/31","tier":1,"tier_label":"权威"},{"gid":15,"title":"市市场监管局食品安全提示:吃过年剩菜,致癌风险真有那么大?","url":"https://www.shanghai.gov.cn/nw17239/20250207/84ab66f27d9d4a1aa4926ba824ab115c.html","site":"上海市人民政府","date":"2025/02/06","tier":1,"tier_label":"权威"},{"gid":16,"title":"隔夜菜真的会致癌吗?","url":"https://www.xjsy.gov.cn/xwdt/dqyw/20241121/i1116497.html","site":"沙雅县政府门户网站","date":"2024/11/21","tier":1,"tier_label":"权威"},{"gid":17,"title":"“医”说就懂丨“隔夜菜”真的会致癌吗?","url":"https://www.kepuchina.cn/article/articleinfo?business_type=100&classify=0&ar_id=677173","site":"科普中国网","date":"2026/02/28","tier":1,"tier_label":"权威"},{"gid":18,"title":"【新闻】网传吃隔夜菜会致癌 专家:无科学根据","url":"https://www.cnr.cn/2014jkpd/jkjryw/201405/t20140519_515543806.shtml","site":"央广网","date":"2014/05/19","tier":1,"tier_label":"权威"},{"gid":19,"title":"【“三抓三促”行动进行时】隔夜菜到底能不能吃?这4类太危险!","url":"https://gscdc.cn/html/news/jiankangtishi/jiankangtishi-show-6030.html","site":"甘肃省疾病预防控制中心","date":"2023/04/17","tier":1,"tier_label":"权威"},{"gid":20,"title":"食品安全  隔夜菜致癌不能吃?权威答疑来了","url":"https://www.kepuchina.cn/article/articleinfo?business_type=100&ar_id=106422","site":"科普中国网","date":"2022/07/28","tier":1,"tier_label":"权威"}],"discarded":7,"domains":17,"t1":15}],"ancient":{"verdict":"not_found","books_hit":0,"headline":"42 部本草古籍全文检索，未找到与「隔夜菜致癌」相关的记载","passages":[],"books":42,"chars":8774342},"discarded_count":12,"stats":{"searches":4,"llm_calls":2}},{"claim":"绿豆解百毒","verdict":{"code":"partial","label":"部分有据","icon":"◐","color":"#b07c1a","headline":"绿豆有一定解毒说法，但不能解百毒","reason":"来源[3]提到绿豆中的蛋白、鞣质和黄酮类化合物可与部分有害物质结合，来源[4]也称其对巴豆中毒有一定减毒作用。可是来源[2][3][4]列举的仅是部分药物、酒精、铅及农药等，来源[15]明确认为“解毒”说法夸张，因此不能推出食用绿豆能解除各种毒物引起的中毒。"},"ancient_note":"古3记载绿豆“清热解毒”，但同时称服药人不可食、会令药无力；所给古籍原文没有“绿豆解百毒”的直接记载。","propositions":[{"text":"绿豆含有具有解毒作用的成分","verdict":"partial","label":"部分有据","reason":"来源[3]提到蛋白、鞣质和黄酮类化合物可能与部分有害物质结合，但仅有该来源直接支持，范围也限于部分物质。","queries":["绿豆解毒成分研究","绿豆解毒成分误区","腾讯医典绿豆解毒成分"],"sources":[{"gid":1,"title":"酷暑时期,肝病患者可以喝绿豆汤吗?","url":"https://www.peopleapp.com/rmharticle/30028336257","site":"人民日报","date":"2022/06/17","tier":1,"tier_label":"权威"},{"gid":2,"title":"“吃绿豆解药”是谬传!","url":"https://www.peopleapp.com/rmharticle/30035047084","site":"人民日报","date":"2021/10/25","tier":1,"tier_label":"权威"},{"gid":3,"title":"绿豆解毒不解药","url":"https://epaper.gmw.cn/wzb/html/2011-10/11/nw.D110000wzb_20111011_1-04.htm","site":"光明网","date":"2011/10/11","tier":1,"tier_label":"权威"},{"gid":4,"title":"绿豆解药?吃药期间能喝绿豆汤吗?","url":"https://www.peopleapp.com/rmharticle/30029050741","site":"人民日报","date":"2022/07/29","tier":1,"tier_label":"权威"},{"gid":5,"title":"杏林宝鉴绿豆能解毒,那它会解药吗?","url":"https://www.peopleapp.com/rmharticle/30027316818","site":"人民日报","date":"2022/03/17","tier":1,"tier_label":"权威"},{"gid":6,"title":"这种豆类,能解食物中的重金属毒","url":"https://szyyj.gd.gov.cn/zyyfw/ysbj/content/post_4749574.html","site":"广东省中医药局","date":"2025/07/25","tier":1,"tier_label":"权威"},{"gid":7,"title":"科学饮豆汤,健康享清凉","url":"https://zjamr.zj.gov.cn/art/2025/8/27/art_1229487170_59047410.html","site":"浙江省市场监督管理局","date":"2025/08/27","tier":1,"tier_label":"权威"},{"gid":8,"title":"[科普中国]-绿豆","url":"https://www.kepuchina.cn/article/articleinfo?business_type=100&ar_id=168669","site":"科普中国网","date":"2021/12/31","tier":1,"tier_label":"权威"},{"gid":9,"title":"绿豆","url":"https://kepuchina.cn/zn/nyjs/201909/t20190919_1113691.shtml","site":"科普中国网","date":"2019/09/19","tier":1,"tier_label":"权威"},{"gid":10,"title":"绿豆真的有那么神?","url":"https://piyao.kepuchina.cn/h5/rumordetail?id=ZkAM","site":"科普中国网","date":"2019/08/30","tier":1,"tier_label":"权威"}],"discarded":11,"domains":7,"t1":8},{"text":"食用绿豆能解除各种毒物引起的中毒","verdict":"partial","label":"部分有据","reason":"来源[2][3][4]仅列举部分毒物或中毒情形，来源[15]还指出将绿豆概括为“解毒”属于夸张，不能支持“各种毒物”。","queries":["绿豆解百毒的功效","绿豆解百毒辟谣","卫健委绿豆解百毒"],"sources":[{"gid":11,"title":"夏季吃什么清理肠胃热毒?夏日排毒果蔬别错过","url":"https://health.people.com.cn/n/2015/0618/c14739-27177647.html","site":"人民网","date":"2015/06/18","tier":1,"tier_label":"权威"},{"gid":12,"title":"吃什么排毒 排毒食品大全 排毒食谱","url":"https://wsjkw.henan.gov.cn/2011/02-14/1276617.html","site":"河南省卫生健康委员会","date":"2011/02/14","tier":1,"tier_label":"权威"},{"gid":13,"title":"“吃绿豆解药”是谬传!","url":"https://www.peopleapp.com/rmharticle/30035047084","site":"人民日报","date":"2021/10/25","tier":1,"tier_label":"权威"},{"gid":14,"title":"环境污染导致体内积毒 常吃八种蔬菜助年轻10岁","url":"https://www.chinanews.com/jk/jk-ysyy/news/2009/12-09/2008913.shtml","site":"中国新闻网","date":"2009/12/09","tier":1,"tier_label":"权威"},{"gid":15,"title":"喝绿豆汤可以解“毒”吗?","url":"https://piyao.kepuchina.cn/rumor/rumordetail?id=Onod","site":"科普中国网","date":"2022/08/08","tier":1,"tier_label":"权威"},{"gid":16,"title":"绿豆解药?吃药期间能喝绿豆汤吗?","url":"https://www.peopleapp.com/rmharticle/30029050741","site":"人民日报","date":"2022/07/29","tier":1,"tier_label":"权威"},{"gid":17,"title":"吃错会腹泻!绿豆汤怎么喝才解暑","url":"https://www.cnr.cn/jy/list/20160718/t20160718_522709323.shtml","site":"央广网","date":"2016/07/18","tier":1,"tier_label":"权威"},{"gid":18,"title":"杏林宝鉴绿豆能解毒,那它会解药吗?","url":"https://www.peopleapp.com/rmharticle/30027316818","site":"人民日报","date":"2022/03/17","tier":1,"tier_label":"权威"},{"gid":19,"title":"陈皮､薏米､百合……煲绿豆汤解暑,究竟应该加什么?","url":"https://szyyj.gd.gov.cn/zyyfw/ysbj/content/post_4465534.html","site":"广东省中医药局","date":"2024/07/27","tier":1,"tier_label":"权威"},{"gid":20,"title":"这种豆类,能解食物中的重金属毒","url":"https://szyyj.gd.gov.cn/zyyfw/ysbj/content/post_4749574.html","site":"广东省中医药局","date":"2025/07/25","tier":1,"tier_label":"权威"}],"discarded":5,"domains":9,"t1":8}],"ancient":{"verdict":"found","books_hit":31,"headline":"在 31 部古籍中找到 31 处记载，最早见于《证类本草》（宋·唐慎微）","passages":[{"book":"本草纲目","dynasty":"明","author":"李时珍","sentence":"绿豆粉【气味】甘，凉、平，无毒。原曰：其胶粘者，脾胃虚人不可多食。瑞曰：勿近杏仁，则烂不能作索。"},{"book":"证类本草","dynasty":"宋","author":"唐慎微","sentence":"…入新净竹筒内盛，以蒸饼一块塞筒口，蒸七度，用好粉脂一两为丸如绿豆大。日三服，酒下七丸、十丸。三年后道成，益力不饥，玉女来侍。肘后方：若血内漏者。以雄黄末如大豆，纳疮中，又服五钱匕，血皆化为水，卒以小便服之。经验方：治马汗入肉。雄黄、白矾等分，更用乌梅三个，槌碎，巴豆一个，合研为细末。以半钱匕，油调敷患处。斗门方：辟魔，以一块带头上，妙。博济方：治偏头痛至灵散：雄黄、细辛等分研令细，每用一字以下，左边疼吹入右鼻，右边疼吹入左鼻，立效。续十全方：治缠喉风。雄黄一块，新汲水磨，急灌，吐下，瘥。集验方：治卒魇。…"},{"book":"食鉴本草","dynasty":"明","author":"宁源","sentence":"…绿豆】清热解毒。不可去皮。去皮壅气。作枕明目。服药人不可食。令药无力。【赤小豆】解毒利小便。能逐津液。久食虚人。和鲤鱼煮食。能治香港脚水肿。"}],"books":42,"chars":8774342},"discarded_count":16,"stats":{"searches":6,"llm_calls":2}},{"claim":"红枣配薄荷能排肝毒","verdict":{"code":"not_found","label":"查不到","icon":"∅","color":"#6b6b6b","headline":"给定资料不能证实红枣配薄荷能清除肝脏毒素","reason":"来源[1]仅介绍含大枣、薄荷等多种原料的组合物，未直接证明两者各自含有哪些具有药理活性的成分。来源[9]介绍薄荷的传统功效，但没有支持红枣配薄荷能清除肝脏毒素；来源[8]讨论的是汗蒸，不能直接用于判定这一搭配。所给古籍也没有记载这一搭配及其所称作用，因此判为查不到，而非已证实或已证伪。"},"ancient_note":"所给《神农本草经》《证类本草》等摘录有大枣的传统功用记载，《本草纲目》摘录中出现薄荷汤，但均没有红枣配薄荷能清除肝脏毒素的记载，不能据此判为仅古载。","propositions":[{"text":"红枣和薄荷含有具有药理活性的成分","verdict":"not_found","label":"查不到","reason":"来源[1]涉及多种原料组成的组合物，来源[9]介绍薄荷传统功效，均未直接提供红枣和薄荷各自药理活性成分的证据。","queries":["红枣薄荷活性成分","红枣薄荷成分误区","中国营养学会红枣薄荷"],"sources":[{"gid":1,"title":"一种可调节胃蛋白酶及胰脂肪酶活性的中药组合物及其制备方法","url":"https://med.wanfangdata.com.cn/Paper/Detail?id=Patent_ZL_CN202511326373.2_CN121015804A_20251128","site":"万方医学网","date":"","tier":1,"tier_label":"权威"},{"gid":2,"title":"健康科普全民营养周:科学食养","url":"https://www.kaifu.gov.cn/zfxxgk/fdzdgknr/zdmsxx/ggwsxx/wsjd_148888/202305/t20230517_11098584.html","site":"长沙市开福区人民政府门户网站","date":"2023/05/17","tier":1,"tier_label":"权威"},{"gid":3,"title":"常翠青:倡导“东方健康膳食模式” 吃动平衡提升免疫力","url":"https://www.news.cn/fortunepro/20220519/9b17df7c58324940a0cb1c81c867bd96/c.html","site":"新华网","date":"2022/05/19","tier":1,"tier_label":"权威"},{"gid":4,"title":"提醒丨红枣补血,味精致癌,猪蹄补胶原……这些所谓饮食“常识”骗了你多少年?","url":"http://www.liangqing.gov.cn/bmrl/shfw/t6227360.html","site":"良庆区人民政府","date":"2024/10/27","tier":1,"tier_label":"权威"},{"gid":5,"title":"红枣补血,味精致癌,猪蹄补胶原……这些所谓饮食“常识”骗了你多少年?","url":"http://www.guiping.gov.cn/xxgk/zdlyxxgk/shgysy/jbylwslyylws/jkkp/t14978538.shtml","site":"桂平市人民政府","date":"2022/12/30","tier":1,"tier_label":"权威"},{"gid":6,"title":"全民营养周","url":"https://www.cnsoc.org/knowledge/page59.html","site":"中国营养学会","date":"","tier":1,"tier_label":"权威"},{"gid":7,"title":"《新时代慢性病防治食养食疗策略和行动》白皮书发布","url":"http://ycyyxh.com/showartical.aspx?articalid=6B410C838C22CB16","site":"盐城市营养学会","date":"2024/06/04","tier":2,"tier_label":"可信"}],"discarded":20,"domains":7,"t1":6},{"text":"食用红枣配薄荷能够排出肝脏中的毒素","verdict":"not_found","label":"查不到","reason":"来源[8]针对汗蒸，来源[9][10]也未提供红枣配薄荷具有该作用的直接证据。","queries":["红枣薄荷能排肝毒","红枣薄荷排肝毒辟谣","红枣薄荷排肝毒腾讯医典"],"sources":[{"gid":8,"title":"汗蒸排肝毒缺少科学依据","url":"https://health.cnr.cn/jkgdxw/20250618/t20250618_527217509.shtml","site":"央广网中华名医号","date":"2025/06/18","tier":1,"tier_label":"权威"},{"gid":9,"title":"药材饮片","url":"https://h5.baike.qq.com/mobile/overview_detail.html?adtag=hunyuan.cs.ybtool&m=13ce55b20fa73e8a30dd43de41b865cb&name=%E8%96%84%E8%8D%B7&rank=0&searchid=9703dbe58224a2d48fa74bc7b2d6dd58&sn=yidian-sn-0QBDPk0x9beGrDtl29NDNdiHFdtT%2FIEWdMfRbjFKg0fzfFzkm9TxGQHjj07Tehlp","site":"腾讯医典","date":"2026/08/05","tier":1,"tier_label":"权威"},{"gid":10,"title":"中药代茶饮,喝对才有效","url":"https://szyyj.gd.gov.cn/zyyfw/ysbj/content/post_4441931.html","site":"广东省中医药局","date":"2024/06/18","tier":1,"tier_label":"权威"},{"gid":11,"title":"区供销联社组织中西医结合健康保健学习活动 筑牢职工健康“防护网”","url":"https://www.panyu.gov.cn/jgzy/qtjg/fzqgxs/gzxx/content/post_10452831.html","site":"广州市番禺区政府门户网站","date":"2025/09/18","tier":1,"tier_label":"权威"},{"gid":12,"title":"上火､肾虚､湿气重……中药代茶饮,喝对才有效","url":"https://news.hubeidaily.net/pc/c_2580883.html","site":"湖北日报","date":"2024/05/05","tier":2,"tier_label":"可信"}],"discarded":23,"domains":5,"t1":4}],"ancient":{"verdict":"found","books_hit":39,"headline":"在 39 部古籍中找到 39 处记载，最早见于《神农本草经》（汉·佚名）","passages":[{"book":"本草纲目","dynasty":"明","author":"李时珍","sentence":"…薄荷汤服三、四分。（方广《附余》）末少许，薄荷汤调服。继服二陈汤，神效。（《仁斋直指》）瘫痪走痛：用蝎虎（即 蜓）一枚（炙黄），陈皮五分，罂粟壳（蜜炒）一钱，甘草、乳香、没药各二钱半，为末。每服水煎服。（《医学正传》）包，煨研），地龙五条（生研），草乌头三枚（生研），木香五钱，乳香末二钱龙脑五分，合研成膏。入酒糊捣，丸如梧桐子大。每日空心乳香酒服三十丸，取效。（《总录》）破伤中风：身如角弓反张，筋急口噤者，用守宫丸治之。…"},{"book":"神农本草经","dynasty":"汉","author":"佚名","sentence":"大枣味甘平。主治心腹邪气，安中养脾，助十二经，平胃气，通九窍，补少气少津液，身中不足，大惊，四肢重。和百药。久服轻身长年。叶覆麻黄，能令出汗。生平泽。"},{"book":"证类本草","dynasty":"宋","author":"唐慎微","sentence":"大枣味甘，平，无毒。主心腹邪气，安中养脾，助十二经，平胃气，通九窍，补少气，少津液，身中不足，大惊，四肢重，和百药，补中益气，强力，除烦闷，疗心下悬，肠 。久服轻身长年，不饥神仙。一名干枣，一名美枣，一名良枣。八月采，曝干。"}],"books":42,"chars":8774342},"discarded_count":43,"stats":{"searches":5,"llm_calls":2}}];
+const C={supported:'#2e6b4f',partial:'#b07c1a',contrary:'#b3261e',ancient_only:'#8a6d3b',not_found:'#8e8e93'};
+const ICON={supported:'✓',partial:'◐',contrary:'✕',ancient_only:'❖',not_found:'∅'};
+const HL={"红枣配薄荷能排肝毒": "我编的"};
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// 标题前加"我编的"小红点的两条
+const tabsEl=document.getElementById('tabs'), outEl=document.getElementById('out');
+DATA.forEach((d,i)=>{
+  const b=document.createElement('button');
+  b.className='tab'+(i===0?' on':'');
+  b.innerHTML=esc(d.claim)+(HL[d.claim]?'<span class="dot"></span>':'');
+  b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+                 b.classList.add('on'); render(i);};
+  tabsEl.appendChild(b);
+});
+
+function render(i){
+  const r=DATA[i], v=r.verdict, col=C[v.code]||'#8e8e93', ic=ICON[v.code]||'';
+  let h='';
+
+  h+=`<div class="verdict" style="border-left:3px solid ${col}">
+    <div class="vhead">
+      <span class="vchip" style="background:${col}">${ic} ${esc(v.label)}</span>
+      <span class="vtitle">${esc(v.headline)}</span>
+    </div>
+    ${v.reason?`<div class="vreason">${esc(v.reason)}</div>`:''}
+    <div class="vmeta">
+      <span><span class="k">说法</span> ${esc(r.claim)}</span>
+      <span><span class="k">拆出命题</span> ${r.propositions.length} 个</span>
+      <span><span class="k">剔除低质</span> ${r.discarded_count} 条</span>
+      <span><span class="k">古籍语料</span> ${r.ancient.books} 部</span>
+    </div>
+  </div>`;
+
+  h+='<div class="sect">拆成命题，逐条查证</div>';
+  r.propositions.forEach(p=>{
+    const c=C[p.verdict]||'#8e8e93';
+    h+=`<div class="prop" style="border-left-color:${c}">
+      <div class="ptop">
+        <span class="pdot" style="background:${c}"></span>
+        <span class="ptext">${esc(p.text)}</span>
+        <span class="pverdict" style="color:${c};background:${c}14">${ICON[p.verdict]||''} ${esc(p.label)}</span>
+      </div>
+      ${p.reason?`<div class="preason">${esc(p.reason)}</div>`:''}`;
+    if(p.sources&&p.sources.length){
+      h+='<div class="srcs">'+p.sources.slice(0,4).map(s=>
+        `<a class="src" href="${esc(s.url)}" target="_blank" rel="noopener">
+           <span class="snum">[${s.gid||''}]</span><span class="stitle">${esc(s.title)}</span>
+           <span class="tier">T${s.tier} ${esc(s.tier_label)}</span>
+           <div class="smeta">${esc(s.site||'')} · ${esc(s.date||'')}</div>
+         </a>`).join('')+'</div>';
+    }else{
+      h+='<div class="srcs"><span class="smeta" style="margin:0">没有检索到可采信来源</span></div>';
+    }
+    h+='</div>';
+  });
+
+  if(r.discarded_count>0){
+    h+=`<div class="cut">另有 ${r.discarded_count} 条结果被剔除，未计入结论：
+        偏方站、营销号、无署名转载。这类内容在养生话题里占比最高，也是谣言的主要来源。</div>`;
+  }
+
+  const a=r.ancient;
+  h+='<div class="sect">同一句话，古书里怎么说</div>';
+  h+=`<div class="ancient"><div class="ahead">${esc(a.headline)}</div>`;
+  const note=(r.ancient_note||'').trim(), sq=s=>String(s).replace(/\s/g,'');
+  if(note && sq(note).slice(0,12)!==sq(a.headline).slice(0,12)) h+=`<div class="anote">${esc(note)}</div>`;
+  if(a.passages&&a.passages.length){
+    a.passages.forEach(p=>{
+      h+=`<div class="apass">
+        <div class="abook">《${esc(p.book)}》${esc(p.dynasty)}·${esc(p.author)}</div>
+        <div class="atext">${esc(p.sentence)}</div>
+      </div>`;
+    });
+  }else{
+    h+=`<div class="quoting">查无此句，意思是「古人没这么讲过」。<br>
+      注意这不等于「现代科学上不成立」——古籍只能证明这句话没有出处，不能证明它错。
+      它错没错，看上面现代来源那半边。</div>`;
+  }
+  h+='</div>';
+  outEl.innerHTML=h;
+}
+render(0);
+</script></body></html>
