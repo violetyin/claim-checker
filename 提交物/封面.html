@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<style>
+  @page{size:1600px 1200px;margin:0}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{width:1600px;height:1200px;overflow:hidden;position:relative;background:#fbf9f4;
+       font:16px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#1c1c1e}
+  body::before{content:'';position:absolute;inset:0;opacity:.55;
+    background-image:repeating-linear-gradient(45deg,rgba(138,109,59,.05) 0 1px,transparent 1px 8px)}
+  .p{position:relative;height:100%;padding:76px 82px;display:flex;flex-direction:column}
+
+  .top{display:flex;justify-content:space-between;align-items:center;
+       font-size:21px;letter-spacing:.16em;color:#8a6d3b;padding-bottom:26px;
+       border-bottom:3px solid #1c1c1e}
+  .top .r{color:#8f8f94;letter-spacing:.04em;font-size:19px}
+
+  h1{font-size:104px;line-height:1.02;letter-spacing:-.02em;font-weight:800;margin-top:54px}
+  h1 em{font-style:normal;color:#8a6d3b}
+  .sub{font-size:31px;color:#3a3a3c;margin-top:26px;line-height:1.55;max-width:1150px}
+  .sub b{color:#1c1c1e;font-weight:700}
+
+  .row{display:flex;gap:26px;margin-top:auto;align-items:stretch}
+
+  /* 结论卡（主角） */
+  .card{flex:1.25;background:#fff;border:2px solid #e8e4da;border-radius:18px;padding:34px 36px;
+        border-left:10px solid #6b6b6b;display:flex;flex-direction:column}
+  .card .q{font-size:23px;color:#8f8f94;letter-spacing:.06em}
+  .card .v{font-size:52px;font-weight:800;color:#6b6b6b;margin-top:12px;line-height:1.1}
+  .card .h{font-size:27px;font-weight:650;margin-top:16px;line-height:1.45}
+  .card .n{font-size:20px;color:#8f8f94;margin-top:auto;padding-top:20px;border-top:1px solid #eeece7}
+  .card .n b{color:#b3261e;font-weight:800}
+
+  /* 右侧数据 */
+  .side{flex:.8;display:flex;flex-direction:column;gap:22px}
+  .stat{background:#fff;border:2px solid #e8e4da;border-radius:16px;padding:22px 26px;flex:1;
+        display:flex;flex-direction:column;justify-content:center}
+  .stat .v{font-size:44px;font-weight:800;letter-spacing:-.02em;line-height:1}
+  .stat .v small{font-size:21px;font-weight:600;margin-left:4px;color:#3a3a3c}
+  .stat .l{font-size:19px;color:#8f8f94;margin-top:10px}
+
+  .grades{display:flex;gap:10px;margin-top:30px}
+  .g{flex:1;border-radius:12px;padding:14px 8px;text-align:center;color:#fff;font-size:20px;font-weight:700}
+  .g small{display:block;font-size:15px;font-weight:500;opacity:.9;margin-top:3px}
+
+  .foot{display:flex;justify-content:space-between;align-items:flex-end;margin-top:34px;
+        padding-top:22px;border-top:2px solid #ddd8cd;font-size:19px;color:#8f8f94}
+  .foot b{color:#1c1c1e;font-weight:700}
+</style></head>
+<body><div class="p">
+
+  <div class="top">
+    <span>1024 超能 CODING 周末　·　武汉会场　·　侦探赛道</span>
+    <span class="r">元宝搜索 × 42 部本草古籍</span>
+  </div>
+
+  <h1>这句<em>能信吗</em></h1>
+  <p class="sub">
+    一句话进去，它拆成命题，一边查<b>古书里有没有这句话</b>，一边查<b>现代权威怎么说</b>。
+    它不说真假，说<b>有几分真</b>——查不到就直说查不到。
+  </p>
+
+  <div class="grades">
+    <div class="g" style="background:#2e6b4f">✓ 有据</div>
+    <div class="g" style="background:#b07c1a">◐ 部分有据</div>
+    <div class="g" style="background:#b3261e">✕ 相反</div>
+    <div class="g" style="background:#8a6d3b">❖ 仅古载</div>
+    <div class="g" style="background:#6b6b6b">∅ 查不到</div>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <div class="q">输入「红枣配薄荷能排肝毒」（一句编造的说法）</div>
+      <div class="v">∅ 查不到</div>
+      <div class="h">给定资料不能证实红枣配薄荷能清除肝脏毒素</div>
+      <div class="n">55 条检索结果里，<b>剔除 43 条</b>偏方站与营销号，剩下没有一条在说这件事</div>
+    </div>
+
+    <div class="side">
+      <div class="stat">
+        <div class="v">877<small>万字</small></div>
+        <div class="l">42 部本草古籍全文检索</div>
+      </div>
+      <div class="stat">
+        <div class="v">4<small>级</small></div>
+        <div class="l">信源分级，只采信政府与权威机构</div>
+      </div>
+      <div class="stat">
+        <div class="v">10<small>条</small></div>
+        <div class="l">常见传言已预核，可现场秒查</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span><b>claim-checker.app.workbuddy.host</b>　在线可查任意说法</span>
+    <span>拆 · 查 · 比 · 判　｜　只做资料核对，不替代医生</span>
+  </div>
+
+</div></body></html>
