@@ -32,6 +32,35 @@ import wsa_search as w
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
+# 日预算护栏：公开链接上谁都能点，额度是我们自己的。
+# 一次核查 6~9 次搜索，900 次大约够 100~150 次完整核查，正常演示碰不到。
+DAILY_BUDGET = 900
+
+# 云端反代有 ~100 秒超时（实测 524 Response Timeout by Origin Server）。
+# 而一条新说法要 30~70 秒、网关拥塞时更久——同步请求会被掐断，
+# 用户看到的是报错，可后台其实还在跑。
+# 所以改成异步：立刻返回，后台线程干活，前端轮询；结果一落盘，轮询就读到了。
+_INFLIGHT: dict[str, bool] = {}
+_INFLIGHT_LOCK = threading.Lock()
+
+
+def _start_job(claim: str, refresh: bool):
+    with _INFLIGHT_LOCK:
+        if _INFLIGHT.get(claim):
+            return                          # 同一个说法已经在跑，别重复烧额度
+        _INFLIGHT[claim] = True
+
+    def _run():
+        try:
+            checker.analyze(claim, refresh=refresh, verbose=False)
+        except BaseException:
+            pass                            # 失败也把在跑标记清掉，让用户能重试
+        finally:
+            with _INFLIGHT_LOCK:
+                _INFLIGHT.pop(claim, None)
+
+    threading.Thread(target=_run, daemon=True).start()
+
 PAGE = r"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -149,14 +178,36 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 async function run(refresh){
   const v=q.value.trim(); if(!v) return;
   go.disabled=true;
-  out.innerHTML='<p class="load"><span class="step">拆命题 → 查古籍 → 查现代来源 → 交叉比对 → 判定</span></p>';
+  const t0=Date.now();
+  const tip='拆命题 → 查古籍 → 查现代来源 → 交叉比对 → 判定';
+  const show=()=>{ out.innerHTML='<p class="load"><span class="step">'+tip+'</span><br>'+
+      '<span style="font-size:12.5px;color:#a8a8ad">已等待 '+Math.round((Date.now()-t0)/1000)+' 秒'+
+      '（新说法要调两次模型，比赛期间网关排队会久一些）</span></p>'; };
+  show();
+  const tick=setInterval(show,1000);
+
+  const stop=()=>{ clearInterval(tick); go.disabled=false; };
+
   try{
-    const r=await fetch('/api/check?q='+encodeURIComponent(v)+(refresh?'&refresh=1':''))
-              .then(x=>{if(!x.ok)throw new Error('HTTP '+x.status);return x.json()});
-    if(r.error){ out.innerHTML='<p class="load">出错：'+esc(r.error)+'</p>'; go.disabled=false; return; }
-    out.innerHTML=render(r);
-  }catch(e){ out.innerHTML='<p class="load">查询失败：'+esc(e.message)+'</p>'; }
-  go.disabled=false;
+    // 异步：立刻返回，后台跑。云端反代约 100 秒就掐断，同步请求必然超时。
+    const st=await fetch('/api/start?q='+encodeURIComponent(v)+(refresh?'&refresh=1':'')).then(x=>x.json());
+    if(st.error){ stop(); out.innerHTML='<p class="load">'+esc(st.error)+'</p>'; return; }
+
+    for(let i=0;i<150;i++){
+      await new Promise(r=>setTimeout(r,2000));
+      const r=await fetch('/api/poll?q='+encodeURIComponent(v)).then(x=>x.json());
+      if(r.error){ stop(); out.innerHTML='<p class="load">'+esc(r.error)+'</p>'; return; }
+      if(r.state==='running') continue;
+      if(r.state==='unknown'){ stop(); out.innerHTML='<p class="load">后台任务中断了，请再点一次核查</p>'; return; }
+      stop(); out.innerHTML=render(r); return;
+    }
+    stop();
+    out.innerHTML='<p class="load">超过 5 分钟还没出结果，上游网关太慢。过一会儿再点一次，已经跑完的部分会走缓存。</p>';
+  }catch(e){
+    stop();
+    out.innerHTML='<p class="load">查询失败：'+esc(e.message)+'<br>'+
+      '<span style="font-size:12.5px;color:#a8a8ad">后台可能仍在跑，等几秒再点一次核查，会直接读结果。</span></p>';
+  }
 }
 
 function render(r){
@@ -242,13 +293,65 @@ function render(r){
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
+        qs = parse_qs(u.query)
+
+        # 异步核查第一步：立刻返回，后台开工。命缓存则直接说 ready。
+        if u.path == "/api/start":
+            q = (qs.get("q") or [""])[0].strip()
+            refresh = (qs.get("refresh") or [""])[0] in ("1", "true", "yes")
+            if not q:
+                self._json({"error": "说法不能为空"})
+                return
+            if w.usage_today() >= DAILY_BUDGET:
+                self._json({"error": f"今日演示额度已用完（已调用 {w.usage_today()} 次搜索），明天自动恢复。"})
+                return
+            cached = checker._read_result(q) if not refresh else None
+            if cached:
+                self._json({"state": "ready", "from_cache": True})
+                return
+            _start_job(q, refresh)
+            self._json({"state": "running", "from_cache": False})
+            return
+
+        # 异步核查第二步：轮询。结果一落盘就能读到，不必等请求活着。
+        if u.path == "/api/poll":
+            q = (qs.get("q") or [""])[0].strip()
+            if not q:
+                self._json({"error": "说法不能为空"})
+                return
+            cached = checker._read_result(q)
+            if cached:
+                cached.setdefault("stats", {})["from_cache"] = True
+                self._json(cached)
+                return
+            with _INFLIGHT_LOCK:
+                running = bool(_INFLIGHT.get(q))
+            self._json({"state": "running" if running else "unknown"})
+            return
+
         if u.path == "/api/check":
             qs = parse_qs(u.query)
             q = (qs.get("q") or [""])[0].strip()
             refresh = (qs.get("refresh") or [""])[0] in ("1", "true", "yes")
+
+            # 公开链接意味着任何拿到链接的人都在花我们的额度。
+            # 所以设一道日预算护栏：正常演示根本碰不到，被刷时也不会一次烧光。
+            used = w.usage_today()
+            if used >= DAILY_BUDGET:
+                body = json.dumps({
+                    "error": f"今日演示额度已用完（已调用 {used} 次搜索）。"
+                             f"这是防止额度被刷光的保护，明天自动恢复。"
+                }, ensure_ascii=False).encode("utf-8")
+                self._send(body, "application/json; charset=utf-8")
+                return
+
             try:
                 body = json.dumps(checker.analyze(q, refresh=refresh, verbose=False),
                                   ensure_ascii=False).encode("utf-8")
+            except SystemExit as e:
+                body = json.dumps({
+                    "error": f"古籍语料缺失：{e}"
+                }, ensure_ascii=False).encode("utf-8")
             except Exception as e:  # 页面要能把错误看见，而不是白屏
                 body = json.dumps({"error": f"{type(e).__name__}: {e}"}, ensure_ascii=False).encode("utf-8")
             self._send(body, "application/json; charset=utf-8")
@@ -257,12 +360,17 @@ class Handler(BaseHTTPRequestHandler):
             body = json.dumps({
                 "corpus": guji_engine.corpus_stats(),
                 "wsa": w.cache_stats(),
+                "budget": {"used": w.usage_today(), "cap": DAILY_BUDGET},
                 "cached_claims": len([f for f in os.listdir(checker.RESULT_CACHE_DIR)
                                       if f.endswith(".json")]) if os.path.isdir(checker.RESULT_CACHE_DIR) else 0,
             }, ensure_ascii=False).encode("utf-8")
             self._send(body, "application/json; charset=utf-8")
             return
         self._send(PAGE.encode("utf-8"), "text/html; charset=utf-8")
+
+    def _json(self, obj):
+        self._send(json.dumps(obj, ensure_ascii=False).encode("utf-8"),
+                   "application/json; charset=utf-8")
 
     def _send(self, body: bytes, ctype: str):
         self.send_response(200)
@@ -279,7 +387,16 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     ap = argparse.ArgumentParser(description="这句能信吗 · 核查页面")
     ap.add_argument("--port", type=int, default=8080)
+    ap.add_argument("--host", default=None)
     args = ap.parse_args()
+
+    # 部署到公网时，平台会注入 PORT，要求监听 0.0.0.0。
+    # 本地用时仍然是 127.0.0.1，不对外暴露。
+    env_port = os.environ.get("PORT")
+    if env_port:
+        host, port = "0.0.0.0", int(env_port)
+    else:
+        host, port = (args.host or "127.0.0.1"), args.port
 
     print("正在载入古籍语料…")
     s = guji_engine.corpus_stats()
@@ -294,8 +411,8 @@ def main():
 
     threading.Thread(target=_warm, daemon=True).start()
 
-    print(f"\n打开 →  http://127.0.0.1:{args.port}\n")
-    ThreadingHTTPServer(("127.0.0.1", args.port), Handler).serve_forever()
+    print(f"\n监听 {host}:{port}\n")
+    ThreadingHTTPServer((host, port), Handler).serve_forever()
 
 
 if __name__ == "__main__":
