@@ -3,14 +3,14 @@
   {
    "claim": "隔夜菜致癌",
    "added_at": "2026-10-24 20:17",
-   "last_checked": "2026-10-24 20:31",
+   "last_checked": "2026-10-25 09:11",
    "last": {
-    "code": "partial",
-    "label": "部分有据",
-    "headline": "隔夜菜亚硝酸盐可能上升，但不等于会致癌",
-    "sources": 16,
-    "discarded": 17,
-    "at": "2026-10-24 20:31"
+    "code": "not_found",
+    "label": "查不到",
+    "headline": "判定没跑完（模型调用失败）",
+    "sources": 8,
+    "discarded": 4,
+    "at": "2026-10-25 09:11"
    },
    "history": [
     {
@@ -20,20 +20,28 @@
      "sources": 16,
      "discarded": 17,
      "at": "2026-10-24 20:31"
+    },
+    {
+     "code": "not_found",
+     "label": "查不到",
+     "headline": "判定没跑完（模型调用失败）",
+     "sources": 8,
+     "discarded": 4,
+     "at": "2026-10-25 09:11"
     }
    ]
   },
   {
    "claim": "蜂蜜水能通便",
    "added_at": "2026-10-24 20:20",
-   "last_checked": "2026-10-24 20:31",
+   "last_checked": "2026-10-25 09:12",
    "last": {
-    "code": "partial",
-    "label": "部分有据",
-    "headline": "蜂蜜水并非人人都能有效通便",
-    "sources": 16,
-    "discarded": 16,
-    "at": "2026-10-24 20:31"
+    "code": "not_found",
+    "label": "查不到",
+    "headline": "判定没跑完（模型调用失败）",
+    "sources": 8,
+    "discarded": 10,
+    "at": "2026-10-25 09:12"
    },
    "history": [
     {
@@ -43,6 +51,14 @@
      "sources": 16,
      "discarded": 16,
      "at": "2026-10-24 20:31"
+    },
+    {
+     "code": "not_found",
+     "label": "查不到",
+     "headline": "判定没跑完（模型调用失败）",
+     "sources": 8,
+     "discarded": 10,
+     "at": "2026-10-25 09:12"
     }
    ]
   }
