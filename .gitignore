@@ -46,3 +46,6 @@ deploy/
 WaytoAGI提交材料-麦门省钱助手.*
 麦门省钱助手-封面-*
 mcd-saver-demo/
+
+# WorkBuddy 应用标记文件
+*.genie
