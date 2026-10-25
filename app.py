@@ -28,6 +28,7 @@ import checker
 import guji_engine
 import llm_client as L
 import monitor
+import quota
 import report
 import source_tier as st
 import wsa_search as w
@@ -153,6 +154,14 @@ PAGE = r"""<!doctype html>
   .opts label{cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:7px}
   .opts input{accent-color:#8a6d3b;width:14px;height:14px}
   .opts .tip{color:var(--faint);margin-left:8px;font-size:12px}
+  .quota{margin-top:9px;font-size:12.5px;color:var(--sub);line-height:1.7}
+  .quota b{color:var(--ink2);font-weight:600}
+  .quota .code{display:none;margin-top:8px}
+  .quota input{font:inherit;font-size:13px;padding:6px 10px;border:1px solid var(--line);
+               border-radius:8px;width:140px;text-transform:uppercase;letter-spacing:1px}
+  .quota button{font:inherit;font-size:13px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);
+                background:#fff;cursor:pointer;margin-left:6px}
+  .quota button:hover{border-color:#c9bda8}
   .watch{margin-top:13px;font-size:12.5px;color:var(--sub);line-height:1.95}
   .watch b{color:var(--ink2);font-weight:600}
   .watch .w{cursor:pointer;border-bottom:1px dashed #d8d2c6;margin-right:12px;color:var(--ink2)}
@@ -191,6 +200,7 @@ PAGE = r"""<!doctype html>
     <label><input type="checkbox" id="deep"> 深度调查</label>
     <span class="tip">多拆命题 + 第二轮追问，查得更细，也更慢</span>
   </div>
+  <div class="quota" id="quota"></div>
   <div class="watch" id="watchlist"></div>
   <div class="toast" id="toast"></div>
 
@@ -288,7 +298,8 @@ async function run(refresh){
   try{
     // 异步：立刻返回，后台跑。云端反代约 100 秒就掐断，同步请求必然超时。
     const st=await fetch('/api/start?q='+encodeURIComponent(v)+extraQ).then(x=>x.json());
-    if(st.error){ stop(); out.innerHTML='<p class="load">'+esc(st.error)+'</p>'; return; }
+    if(st.error){ stop(); out.innerHTML='<p class="load">'+esc(st.error)+'</p>';
+                  if(st.quota) renderQuota(st.quota); return; }
 
     for(let i=0;i<150;i++){
       await new Promise(r=>setTimeout(r,2000));
@@ -392,6 +403,39 @@ function render(r){
   return h;
 }
 
+/* ── 次数与兑换码 ── */
+function renderQuota(q){
+  const el=document.getElementById('quota');
+  if(!el||!q) return;
+  if(q.total_left>0){
+    el.innerHTML='今日还可查 <b>'+q.total_left+'</b> 次'+
+      (q.bonus?'（含兑换 '+q.bonus+' 次）':'（每人每天 '+q.free_per_day+' 次）');
+  }else{
+    el.innerHTML='今日免费次数用完了。有兑换码可以继续：'+
+      '<div class="code" id="codebox"><input id="codeinput" placeholder="兑换码" maxlength="12">'+
+      '<button id="codebtn">兑换</button></div>';
+    const box=document.getElementById('codebox'); if(box) box.style.display='block';
+    const btn=document.getElementById('codebtn'); if(btn) btn.onclick=redeemCode;
+  }
+}
+
+async function redeemCode(){
+  const inp=document.getElementById('codeinput');
+  const v=(inp&&inp.value||'').trim();
+  if(!v){ toast('请输入兑换码'); return; }
+  try{
+    const r=await fetch('/api/redeem',{method:'POST',headers:{'Content-Type':'application/json'},
+               body:JSON.stringify({code:v})}).then(x=>x.json());
+    toast(r.message||'已处理');
+    renderQuota(r.quota);
+  }catch(e){ toast('兑换失败：'+e.message); }
+}
+
+async function loadQuota(){
+  try{ renderQuota(await fetch('/api/quota').then(x=>x.json())); }catch(e){}
+}
+loadQuota();
+
 /* ── 盯梢 ── */
 function toast(msg){
   const t=document.getElementById('toast');
@@ -441,6 +485,21 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         qs = parse_qs(u.query)
 
+        if u.path == "/api/quota":
+            self._json(quota.peek(self._client_ip()))
+            return
+
+        if u.path == "/api/redeem":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                data = json.loads(self.rfile.read(n).decode("utf-8") or "{}")
+                ip = self._client_ip()
+                ok, msg = quota.redeem(ip, data.get("code", ""))
+                self._json({"ok": ok, "message": msg, "quota": quota.peek(ip)})
+            except Exception as e:
+                self._json({"ok": False, "message": f"{type(e).__name__}: {e}"})
+            return
+
         if u.path == "/api/watch":
             self._json(self._watch_payload())
             return
@@ -458,10 +517,21 @@ class Handler(BaseHTTPRequestHandler):
                 return
             cached = checker._read_result(q, deep) if not refresh else None
             if cached:
-                self._json({"state": "ready", "from_cache": True})
+                # 命中缓存不花钱，也就不扣次数——同一句话查两次不该掉两次额度
+                self._json({"state": "ready", "from_cache": True, "quota": quota.peek(self._client_ip())})
+                return
+
+            ip = self._client_ip()
+            got = quota.consume(ip)
+            if not got["ok"]:
+                self._json({
+                    "error": "今天的免费次数用完了（每人每天 5 次）。",
+                    "need_code": True,
+                    "quota": quota.peek(ip),
+                })
                 return
             _start_job(q, refresh, deep)
-            self._json({"state": "running", "from_cache": False})
+            self._json({"state": "running", "from_cache": False, "quota": quota.peek(ip)})
             return
 
         # 异步核查第二步：轮询。结果一落盘就能读到，不必等请求活着。
@@ -544,6 +614,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         u = urlparse(self.path)
 
+        if u.path == "/api/redeem":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                data = json.loads(self.rfile.read(n).decode("utf-8") or "{}")
+                ip = self._client_ip()
+                ok, msg = quota.redeem(ip, data.get("code", ""))
+                self._json({"ok": ok, "message": msg, "quota": quota.peek(ip)})
+            except Exception as e:
+                self._json({"ok": False, "message": f"{type(e).__name__}: {e}"})
+            return
+
         if u.path == "/api/watch":
             try:
                 n = int(self.headers.get("Content-Length") or 0)
@@ -577,6 +658,13 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": f"模型配置缺失：{e}"})
         except Exception as e:
             self._json({"error": f"{type(e).__name__}: {e}"})
+
+    def _client_ip(self) -> str:
+        """云上是反代，真实 IP 在 X-Forwarded-For 的第一段。"""
+        xff = self.headers.get("X-Forwarded-For") or ""
+        if xff:
+            return xff.split(",")[0].strip()
+        return self.client_address[0] if self.client_address else "unknown"
 
     def _watch_payload(self) -> dict:
         d = monitor.load()

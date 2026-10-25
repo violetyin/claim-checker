@@ -69,6 +69,15 @@ def main():
                 shutil.copy2(os.path.join(CACHE_CHECK_SRC, fn), os.path.join(CACHE_CHECK_DST, fn))
                 cached += 1
 
+    # 兑换码必须跟着包走：服务器上自己生成一份空的 quota.json，
+    # 你在本地生成的码就等于白发了。
+    qsrc = os.path.join(HERE, "cache", "quota.json")
+    if os.path.isfile(qsrc):
+        os.makedirs(os.path.join(OUT, "cache"), exist_ok=True)
+        shutil.copy2(qsrc, os.path.join(OUT, "cache", "quota.json"))
+        qd = json.load(open(qsrc, encoding="utf-8"))
+        print(f"  已带上兑换码 {len(qd.get('codes', {}))} 个")
+
     total = 0
     for root, _, files in os.walk(OUT):
         for f in files:
