@@ -93,6 +93,7 @@ def _polish(r: dict) -> dict:
     那 39 处是大枣、薄荷各自的词条，不是「红枣配薄荷能排肝毒」这个说法。
     不分清这层，最值钱的那一屏反而最让人困惑。
     """
+    r.setdefault("degraded", False)      # 老的缓存没有这个字段，统一补上
     v = (r.get("verdict") or {}).get("code")
     a = r.get("ancient") or {}
     if v == "not_found" and a.get("verdict") == "found" and a.get("books_hit"):
@@ -487,6 +488,7 @@ def judge(claim: str, props: list[dict], moderns: list[dict], ancient: dict) -> 
                     "reason": f"模型返回异常：{str(e)[:120]}。这一条不算核查通过。",
                     "propositions": [],
                     "ancient_note": "",
+                    "_failed": True,     # 技术失败，不是真的查不到
                 }, calls
     return {}, calls
 
@@ -546,6 +548,10 @@ def analyze(claim: str, use_cache: bool = True, verbose: bool = True, refresh: b
     # ── 深度调查第二轮：只补有争议的命题 ──
     # 第一轮的来源多半停在「有没有」这一层，而养生传言的分歧几乎都在「到什么程度」。
     # 不追问，就只能给个模糊结论。
+    # 技术性失败不能当成「查不到」——对一个主打「敢说查不到」的工具，
+    # 假的查不到是最坏的失败方式：它看起来像真的查过了。
+    degraded = bool(verdict.get("_failed")) or split_fallback
+
     t_deep = 0.0
     deep_rounds = 0
     if deep:
@@ -562,6 +568,7 @@ def analyze(claim: str, use_cache: bool = True, verbose: bool = True, refresh: b
             api_calls = sum(m["api_calls"] for m in moderns)
             verdict, c2 = judge(claim, props, moderns, ancient)
             llm_calls += c2
+            degraded = degraded or bool(verdict.get("_failed"))
             deep_rounds = 1
             for i, mod in enumerate(moderns, 1):
                 say(f"　　 第二轮命题{i}：{mod['unique']} 条去重 / 可信 {mod['trusted_total']}")
@@ -606,8 +613,11 @@ def analyze(claim: str, use_cache: bool = True, verbose: bool = True, refresh: b
             "icon": VERDICTS[code]["icon"],
             "color": VERDICTS[code]["color"],
             "headline": verdict.get("headline", ""),
-            "reason": verdict.get("reason", ""),
+            "reason": verdict.get("reason", "") + (
+                "　⚠ 本次模型调用失败，这条结论不可靠，已排除出缓存。请稍后重试。"
+                if degraded else ""),
         },
+        "degraded": degraded,
         "ancient_note": verdict.get("ancient_note", ""),
         "propositions": prop_out,
         "ancient": ancient,
@@ -622,6 +632,7 @@ def analyze(claim: str, use_cache: bool = True, verbose: bool = True, refresh: b
             # 分阶段耗时：调优和路演被问「为什么快/慢」时有据可答
             "deep": deep,
             "deep_rounds": deep_rounds,
+            "degraded": degraded,
             "stages": {
                 "拆命题": round(t_split, 1),
                 "并发搜索": round(t_search, 1),
@@ -632,7 +643,10 @@ def analyze(claim: str, use_cache: bool = True, verbose: bool = True, refresh: b
         },
     }
     result = _polish(result)
-    if use_cache:
+    # 关键：失败的结论绝不落盘。
+    # 早先没挡这一步，一次模型 SSL 故障把两条「部分有据」覆盖成了「判定没跑完」，
+    # 之后所有回放都会读到这个坏结论，直到有人手动发现。
+    if use_cache and not degraded:
         try:
             _write_result(claim, result, deep)
         except OSError:
